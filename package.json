@@ -1,0 +1,7 @@
+{
+  "name": "wps-field-mapping",
+  "addonType": "et",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WPS 表格字段映射加载项"
+}

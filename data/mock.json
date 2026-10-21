@@ -1,0 +1,54 @@
+{
+  "version": "2.0",
+  "templates": [
+    {
+      "id": "tpl_order_standard",
+      "name": "订单标准模板",
+      "fields": [
+        { "key": "orderNo", "label": "订单编号" },
+        {
+          "key": "customer",
+          "label": "客户信息",
+          "children": [
+            { "key": "name", "label": "客户名称" },
+            {
+              "key": "contact",
+              "label": "联系方式",
+              "children": [
+                { "key": "phone", "label": "联系电话" },
+                { "key": "email", "label": "电子邮箱" }
+              ]
+            }
+          ]
+        },
+        { "key": "orderDate", "label": "下单日期" },
+        { "key": "amount", "label": "订单金额" },
+        { "key": "status", "label": "订单状态" }
+      ]
+    },
+    {
+      "id": "tpl_order_reconcile",
+      "name": "对账精简模板",
+      "fields": [
+        { "key": "orderNo", "label": "订单编号" },
+        {
+          "key": "customer",
+          "label": "客户信息",
+          "children": [{ "key": "name", "label": "客户名称" }]
+        },
+        { "key": "amount", "label": "订单金额" },
+        { "key": "status", "label": "订单状态" }
+      ]
+    }
+  ],
+  "mockSheet": {
+    "name": "订单",
+    "headers": ["订单号", "客户", "联系电话", "电子邮箱", "下单日期", "订单金额", "订单状态"],
+    "rows": [
+      ["SO001", "张三", "13800000001", "zhangsan@example.com", "2026-10-01", 100.5, "已发货"],
+      ["SO002", "李四", "13800000002", "lisi@example.com", "2026-10-02", 200, "待付款"],
+      ["SO003", "王五", null, "wangwu@example.com", "2026-10-03", null, "已发货"],
+      ["SO004", "赵六", "13800000004", null, "2026-10-04", 88, "已取消"]
+    ]
+  }
+}
