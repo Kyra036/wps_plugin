@@ -1,6 +1,4 @@
-// 纯逻辑层：模板字段解析、排序、字段标签和嵌套 JSON 导出。
-// 模板来自 data/mock.json，结构可以是 groups[].fields[]，也兼容旧的 fields[]。
-// visible=false 的组或字段不会进入字段列表，也不会参与上传。
+// 纯逻辑层：展开 BOM 模板字段、自动匹配源表头、识别单元格类型。
 (function (root, factory) {
   const Core = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
@@ -8,144 +6,61 @@
 })(typeof self !== "undefined" ? self : globalThis, function () {
   "use strict";
 
-  const RESULT_VERSION = "2.0";
-
   function colLetter(index) {
-    // 0 基列索引 → 列字母（0 → A）
-    let s = "";
-    let n = index + 1;
-    while (n > 0) {
-      const r = (n - 1) % 26;
-      s = String.fromCharCode(65 + r) + s;
-      n = Math.floor((n - 1) / 26);
+    let value = "";
+    let number = index + 1;
+    while (number > 0) {
+      const remainder = (number - 1) % 26;
+      value = String.fromCharCode(65 + remainder) + value;
+      number = Math.floor((number - 1) / 26);
     }
-    return s;
+    return value;
   }
 
-  // 递归展开任意层级的字段树，返回按模板声明顺序排列的叶子字段。
-  // 只有叶子字段对应工作表列；分组路径用于显示分组和生成嵌套 JSON。
-  function flattenFields(fields, parentKeys, parentLabels, includeHidden) {
+  // 把模板树展开成叶子字段，只有叶子字段代表一列。
+  function flattenFields(fields, parentKeys, parentLabels) {
     const keys = parentKeys || [];
     const labels = parentLabels || [];
-    const out = [];
+    const result = [];
     for (const field of fields || []) {
-      if (!field || typeof field.key !== "string" || !field.key) continue;
-      const visible = field.visible !== false;
-      if (!visible && !includeHidden) continue;
+      if (!field || field.visible === false || typeof field.key !== "string" || !field.key) continue;
       const path = keys.concat(field.key);
       const labelPath = labels.concat(field.label || field.key);
       if (Array.isArray(field.children) && field.children.length > 0) {
-        out.push(...flattenFields(field.children, path, labelPath, includeHidden));
+        result.push(...flattenFields(field.children, path, labelPath));
       } else {
-        out.push({
+        result.push({
           id: path.join("."),
           key: field.key,
           label: labelPath[labelPath.length - 1],
           path,
           labelPath,
           groupLabels: labelPath.slice(0, -1),
-          visible,
-          builtIn: field.builtIn !== false,
           aliases: Array.isArray(field.aliases) ? field.aliases.slice() : [],
         });
       }
     }
-    return out;
+    return result;
   }
 
-  /**
-   * 展开模板分组。
-   * groups[].visible=false 时整组跳过；字段级 visible=false 由 flattenFields 处理。
-   * sourceIndex 保留字段在完整模板中的原始列位置，隐藏字段不会导致后续列错位。
-   */
+  // 兼容当前模板的 groups 和旧结构的 fields。
   function flattenTemplate(template) {
     const groups = Array.isArray(template.groups)
       ? template.groups
       : [{ key: "", label: "", fields: template.fields || [] }];
-    const sourceLeaves = [];
+    const result = [];
     for (const group of groups) {
       if (!group || group.visible === false) continue;
-      sourceLeaves.push(...flattenFields(
+      result.push(...flattenFields(
         group.fields,
         group.key ? [group.key] : [],
-        group.label ? [group.label] : [],
-        true
+        group.label ? [group.label] : []
       ));
     }
-    let sourceIndex = 0;
-    sourceLeaves.forEach((leaf) => {
-      // 自定义字段尚无对应源列，标记为空；内置字段仍保持原来的源列位置。
-      leaf.sourceIndex = leaf.builtIn ? sourceIndex++ : null;
-    });
-    return sourceLeaves.filter((leaf) => leaf.visible);
+    return result;
   }
 
-  function leafMap(leaves) {
-    const map = new Map();
-    for (const leaf of leaves) map.set(leaf.id, leaf);
-    return map;
-  }
-
-  function defaultOrder(leaves) {
-    return leaves.map((leaf) => leaf.id);
-  }
-
-  // 字段集合发生变化时重置顺序，避免新增字段被追加到末尾后与源列错位。
-  function normalizeOrder(order, leaves) {
-    const ids = defaultOrder(leaves);
-    const allowed = new Set(ids);
-    const kept = [];
-    const seen = new Set();
-    for (const id of Array.isArray(order) ? order : []) {
-      if (allowed.has(id) && !seen.has(id)) {
-        seen.add(id);
-        kept.push(id);
-      }
-    }
-    return kept.length === ids.length ? kept : ids;
-  }
-
-  function moveItem(list, from, to) {
-    if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) {
-      return list.slice();
-    }
-    const next = list.slice();
-    const [item] = next.splice(from, 1);
-    next.splice(to, 0, item);
-    return next;
-  }
-
-  function orderedLeaves(order, leaves) {
-    const map = leafMap(leaves);
-    return order.map((id) => map.get(id)).filter(Boolean);
-  }
-
-  // 按当前字段顺序输出模板叶子字段的显示名，用于字段预览。
-  function headerLabels(order, leaves) {
-    return orderedLeaves(order, leaves).map((leaf) => leaf.label);
-  }
-
-  function convertCell(value) {
-    // 所有导出数据在这里统一做空值和日期转换，避免各适配器产生不同格式。
-    if (value === undefined || value === null) return null;
-    if (typeof value === "string" && value.trim() === "") return null;
-    if (value instanceof Date) {
-      return Number.isNaN(value.getTime()) ? null : value.toISOString();
-    }
-    return value;
-  }
-
-  function classifyCell(value) {
-    // 只用于预览统计，不改变实际单元格值。
-    if (value === undefined || value === null) return "empty";
-    if (typeof value === "string" && value.trim() === "") return "empty";
-    if (value instanceof Date) return "date";
-    if (typeof value === "number") return "number";
-    if (typeof value === "boolean") return "boolean";
-    return "text";
-  }
-
-  // 表头比较忽略空格和常见标点，但不做模糊包含匹配，避免“单位”和“单位用量”误匹配。
+  // 表头比较忽略空格和常见标点，不做包含式模糊匹配。
   function normalizeHeader(value) {
     return String(value || "")
       .toLowerCase()
@@ -153,27 +68,17 @@
       .replace(/[()（）\[\]【】/\\_\-·.,，。:%％]/g, "");
   }
 
-  /**
-   * 使用字段名和别名执行一对一自动匹配。
-   * 优先级：分组+字段完整匹配 > 字段名匹配 > 别名匹配。
-   */
+  // 自动匹配只建立一对一关系，后续手工映射会在下一阶段补充。
   function autoMatchHeaders(sourceHeaders, fields) {
     const candidates = [];
     (sourceHeaders || []).forEach((header, headerIndex) => {
       const sourceField = normalizeHeader(header.label || header.fullLabel);
-      const sourceFull = normalizeHeader(
-        `${header.groupLabel || ""}${header.label || header.fullLabel || ""}`
-      );
       (fields || []).forEach((field, fieldIndex) => {
         const targetField = normalizeHeader(field.label);
-        const targetFull = normalizeHeader(`${field.groupLabels[0] || ""}${field.label}`);
         let score = 0;
         let reason = "";
 
-        if (sourceFull && sourceFull === targetFull) {
-          score = 120;
-          reason = "分组与字段名称完全匹配";
-        } else if (sourceField && sourceField === targetField) {
+        if (sourceField && sourceField === targetField) {
           score = 100;
           reason = "字段名称完全匹配";
         } else {
@@ -186,23 +91,18 @@
           }
         }
 
-        const sourceGroup = normalizeHeader(header.groupLabel);
-        const targetGroup = normalizeHeader(field.groupLabels[0]);
-        if (score > 0 && sourceGroup && sourceGroup === targetGroup) score += 5;
-        if (score > 0) {
-          candidates.push({ headerIndex, fieldIndex, score, reason });
-        }
+        if (score > 0) candidates.push({ headerIndex, fieldIndex, score, reason });
       });
     });
 
-    candidates.sort((a, b) => b.score - a.score || a.headerIndex - b.headerIndex);
+    candidates.sort((left, right) => right.score - left.score || left.headerIndex - right.headerIndex);
     const headerMatches = new Map();
     const usedFields = new Set();
-    candidates.forEach((candidate) => {
-      if (headerMatches.has(candidate.headerIndex) || usedFields.has(candidate.fieldIndex)) return;
+    for (const candidate of candidates) {
+      if (headerMatches.has(candidate.headerIndex) || usedFields.has(candidate.fieldIndex)) continue;
       headerMatches.set(candidate.headerIndex, candidate);
       usedFields.add(candidate.fieldIndex);
-    });
+    }
 
     const matches = (sourceHeaders || []).map((header, headerIndex) => {
       const candidate = headerMatches.get(headerIndex);
@@ -212,7 +112,6 @@
         header,
         fieldId: field ? field.id : null,
         field,
-        score: candidate ? candidate.score : 0,
         reason: candidate ? candidate.reason : "未找到匹配字段",
       };
     });
@@ -225,99 +124,33 @@
     };
   }
 
-  function setPath(target, path, value) {
-    let node = target;
-    for (let i = 0; i < path.length - 1; i++) {
-      const key = path[i];
-      if (!node[key] || typeof node[key] !== "object" || Array.isArray(node[key])) {
-        node[key] = {};
-      }
-      node = node[key];
+  // 空值统一为 null，日期统一为 ISO 字符串，数字和布尔值保持原类型。
+  function convertCell(value) {
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string" && value.trim() === "") return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value.toISOString();
     }
-    node[path[path.length - 1]] = value;
+    return value;
   }
 
-  // 行数据按当前列顺序读取，再按字段路径还原成多层对象。
-  function buildRecords(rows, leaves) {
-    return rows.map((row) => {
-      const record = {};
-      leaves.forEach((leaf, index) => {
-        const sourceIndex = Number.isInteger(leaf.sourceIndex) ? leaf.sourceIndex : index;
-        setPath(record, leaf.path, Number.isInteger(leaf.sourceIndex) ? convertCell(row[sourceIndex]) : null);
-      });
-      return record;
-    });
-  }
-
-  function buildExport(template, sheetName, order, leaves, rows) {
-    const current = orderedLeaves(order, leaves);
-    return {
-      version: RESULT_VERSION,
-      template: { id: template.id, name: template.name },
-      sheet: sheetName,
-      fields: current.map((leaf, index) => ({
-        path: leaf.path.join("."),
-        label: leaf.label,
-        // 使用源字段位置，隐藏字段后列字母不会重新压缩。
-        column: Number.isInteger(leaf.sourceIndex) ? colLetter(leaf.sourceIndex) : null,
-      })),
-      records: buildRecords(rows, current),
-    };
-  }
-
-  /**
-   * 将可见模板字段转换成两行表头布局。
-   * 返回列使用 0 基索引；WPS 适配器写入时再转换成 A/B/C 列字母。
-   */
-  function buildTemplateLayout(template) {
-    const leaves = flattenTemplate(template);
-    const columns = leaves.map((leaf) => ({
-      key: leaf.id,
-      label: leaf.label,
-      groupKey: leaf.path[0],
-      groupLabel: leaf.groupLabels[0] || "未分组",
-      width: Math.max(10, Math.min(24, String(leaf.label).length * 2 + 4)),
-    }));
-    const groups = [];
-    columns.forEach((column, index) => {
-      const previous = groups[groups.length - 1];
-      if (previous && previous.label === column.groupLabel) {
-        previous.endIndex = index;
-        previous.width += column.width;
-      } else {
-        groups.push({
-          key: column.groupKey,
-          label: column.groupLabel,
-          startIndex: index,
-          endIndex: index,
-          width: column.width,
-        });
-      }
-    });
-    return {
-      templateId: template.id,
-      templateName: template.name,
-      columns,
-      groups,
-    };
+  // 用于预览区域的数据类型统计。
+  function classifyCell(value) {
+    if (value === undefined || value === null) return "empty";
+    if (typeof value === "string" && value.trim() === "") return "empty";
+    if (value instanceof Date) return "date";
+    if (typeof value === "number") return "number";
+    if (typeof value === "boolean") return "boolean";
+    return "text";
   }
 
   return {
-    RESULT_VERSION,
     colLetter,
     flattenFields,
     flattenTemplate,
-    defaultOrder,
-    normalizeOrder,
-    moveItem,
-    orderedLeaves,
-    headerLabels,
-    convertCell,
-    classifyCell,
     normalizeHeader,
     autoMatchHeaders,
-    buildRecords,
-    buildExport,
-    buildTemplateLayout,
+    convertCell,
+    classifyCell,
   };
 });

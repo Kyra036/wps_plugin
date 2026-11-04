@@ -1,7 +1,7 @@
 {
-  "name": "wps-field-mapping",
+  "name": "wps-bom-import",
   "addonType": "et",
   "version": "1.0.0",
   "private": true,
-  "description": "WPS 表格字段映射加载项"
+  "description": "WPS 表格 BOM 一键导入加载项"
 }

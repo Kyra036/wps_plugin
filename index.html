@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WPS 字段映射加载项</title>
+  <title>WPS BOM 一键导入</title>
   <style>
     :root {
       --primary: #1e40af;
@@ -13,190 +13,66 @@
       --text-2: #475569;
       --border: #dbeafe;
       --error: #dc2626;
-      --gray: #e9eef6;
+      --ok: #15803d;
     }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      font-size: 13px;
-      width: 320px;
-      padding: 8px;
+      width: 340px; padding: 8px;
+      background: var(--bg); color: var(--text);
+      font: 13px "Microsoft YaHei", "Segoe UI", sans-serif;
     }
     .hidden { display: none !important; }
     .dim { color: var(--text-2); }
-    .error-text { color: var(--error); font-size: 12px; margin-top: 4px; }
-
     .section {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: 4px; padding: 8px; margin-bottom: 8px;
+      margin-bottom: 8px; padding: 8px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 4px;
     }
-    .section h2 { font-size: 13px; color: var(--text-2); margin-bottom: 6px; }
-
-    button.primary {
-      width: 100%; padding: 8px; background: var(--primary); color: #fff;
-      border: none; border-radius: 4px; cursor: pointer; font-size: 13px;
+    .section h2 {
+      margin-bottom: 6px; color: var(--text-2); font-size: 13px;
     }
-    button.primary:disabled { background: #94a3b8; cursor: not-allowed; }
-    button.small {
-      padding: 4px 10px; border: 1px solid var(--border); background: #fff;
-      color: var(--text); border-radius: 3px; cursor: pointer; font-size: 12px;
-    }
-    button.small:disabled { color: #94a3b8; cursor: not-allowed; }
-    button.small:hover:not(:disabled) { border-color: var(--primary); }
-    button.small:focus-visible, select:focus-visible, button.primary:focus-visible {
-      outline: 2px solid var(--primary); outline-offset: 1px;
-    }
-
-    select {
-      width: 100%; padding: 5px; border: 1px solid var(--border);
-      border-radius: 3px; font-size: 13px; color: var(--text); background: #fff;
-    }
+    .section h2 span { font-weight: 400; }
 
     #error-summary {
-      border: 1px solid var(--error); border-radius: 4px; background: #fef2f2;
-      color: var(--error); padding: 6px 8px; margin-bottom: 8px; font-size: 12px;
+      margin-bottom: 8px; padding: 6px 8px;
+      border: 1px solid var(--error); border-radius: 4px;
+      background: #fef2f2; color: var(--error); font-size: 12px;
     }
     #error-summary ul { padding-left: 16px; }
-
-    .field-row {
-      display: flex; align-items: center; gap: 6px;
-      border: 1px solid var(--border); border-radius: 4px;
-      padding: 6px 8px; margin-bottom: 6px; background: #fff;
-      cursor: grab;
-    }
-    .field-row:active { cursor: grabbing; }
-    .field-row .handle { color: var(--text-2); user-select: none; font-size: 14px; }
-    .field-row .field-body { flex: 1; min-width: 0; }
-    .field-row .field-title {
-      display: flex; gap: 6px; align-items: baseline;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .field-row .field-path { font-size: 11px; color: var(--text-2); margin-top: 2px; }
-    .field-row .field-col {
-      flex: none; width: 22px; text-align: center; font-size: 11px;
-      color: var(--text-2); border: 1px solid var(--border); border-radius: 3px;
-      background: #f8fafc;
-    }
-    .field-row .mono { font-family: Consolas, monospace; font-size: 11px; color: var(--text-2); }
-    .field-row.dragging { opacity: 0.45; }
-    .field-row.insert-before { box-shadow: 0 -2px 0 0 var(--primary); }
-    .field-row.insert-after { box-shadow: 0 2px 0 0 var(--primary); }
-    .field-row.hover { border-color: var(--primary); }
-
-    #field-empty { padding: 4px 0; }
 
     #sheet-info {
       display: grid; grid-template-columns: 64px 1fr;
       gap: 4px 8px; font-size: 12px;
     }
     #sheet-info .label { color: var(--text-2); }
-    #sheet-info .value {
-      color: var(--text); font-weight: 600;
-      overflow-wrap: anywhere;
+    #sheet-info .value { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
+
+    select {
+      width: 100%; padding: 5px;
+      border: 1px solid var(--border); border-radius: 3px;
+      background: #fff; color: var(--text); font-size: 13px;
     }
+    button.primary {
+      width: 100%; padding: 8px;
+      border: 0; border-radius: 4px;
+      background: var(--primary); color: #fff; font-size: 13px; cursor: pointer;
+    }
+    button.primary:disabled { background: #94a3b8; cursor: not-allowed; }
 
     #source-headers {
       display: flex; flex-wrap: wrap; gap: 4px;
     }
-    /* 模板分组标签：只展示模板结构，不参与字段映射。 */
-    #template-groups {
-      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;
-    }
-    .group-chip {
-      padding: 2px 6px; border: 1px solid var(--border); border-radius: 3px;
-      background: #eff6ff; color: var(--primary); font-size: 11px;
-    }
-    /* 当前模板摘要：区别于下拉框，明确展示名称、来源和版本。 */
-    #current-template {
-      margin-top: 6px; padding: 6px 8px;
-      border-left: 3px solid var(--primary); border-radius: 3px;
-      background: #eff6ff;
-    }
-    .template-current-head {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-    }
-    .template-current-head strong { font-size: 12px; }
-    .template-badge {
-      padding: 1px 5px; border: 1px solid var(--border); border-radius: 3px;
-      background: #fff; color: var(--primary); font-size: 10px;
-    }
-    #template-meta { margin-top: 3px; font-size: 11px; color: var(--text-2); }
-    #template-library-meta {
-      margin-top: 4px; color: var(--text-2); font-size: 11px;
-    }
-    /* 保存区只在选中模板后出现，名称由用户输入。 */
-    .template-save {
-      display: flex; align-items: center; gap: 4px; margin-top: 6px;
-    }
-    .template-save input {
-      flex: 1; min-width: 0; padding: 4px 6px;
+    .header-chip {
+      max-width: 100%; padding: 3px 6px;
       border: 1px solid var(--border); border-radius: 3px;
-      color: var(--text); font-size: 12px;
+      background: #f8fafc; font-size: 12px; overflow-wrap: anywhere;
     }
-    /* 模板操作区只放与当前选择相关的命令，清除不会删除模板定义。 */
-    .template-actions {
-      display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 4px; margin-top: 6px;
+    .header-chip .col {
+      margin-right: 4px; color: var(--primary);
+      font-family: Consolas, monospace;
     }
-    /* 模板配置当前为只读预览，后续字段开关会在这里扩展。 */
-    .template-config {
-      margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
-    }
-    .template-config > summary {
-      cursor: pointer; color: var(--text); font-size: 12px; font-weight: 600;
-    }
-    .config-group {
-      margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--border);
-    }
-    .config-group > summary {
-      cursor: pointer; color: var(--text-2); font-size: 12px;
-    }
-    .config-field {
-      display: grid; grid-template-columns: 16px minmax(0, 1fr) auto;
-      align-items: center; gap: 2px 6px; padding: 4px 0 4px 8px;
-      border-top: 1px dashed #e2e8f0;
-      cursor: pointer;
-    }
-    .config-field input { accent-color: var(--primary); margin: 0; }
-    .config-field .field-name {
-      min-width: 0; font-size: 12px; overflow-wrap: anywhere;
-    }
-    .config-field-title {
-      min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
-    }
-    .field-name-input {
-      width: 100%; min-width: 0; padding: 2px 4px;
-      border: 1px solid var(--primary); border-radius: 3px;
-      color: var(--text); font-size: 12px;
-    }
-    .custom-tag {
-      padding: 1px 4px; border-radius: 3px;
-      background: #fef3c7; color: #92400e; font-size: 9px;
-    }
-    .config-field .field-key {
-      grid-column: 2 / 4; color: var(--text-2);
-      font-family: Consolas, monospace; font-size: 10px;
-    }
-    .custom-field-actions {
-      grid-column: 2 / 4; display: flex; gap: 8px;
-    }
-    .custom-field-actions button,
-    .add-custom-field {
-      padding: 1px 4px; border: 0; background: transparent;
-      color: var(--primary); font-size: 10px; cursor: pointer;
-    }
-    .add-custom-field { margin: 4px 0 2px 24px; }
-    .custom-field-actions button.danger { color: var(--error); }
-    .visibility-state {
-      padding: 1px 4px; border-radius: 3px; text-align: center;
-      background: #eff6ff; color: var(--primary); font-size: 10px;
-    }
-    .visibility-state.hidden-field {
-      background: #f1f5f9; color: #64748b;
-    }
-    #template-config-note { margin-top: 6px; font-size: 10px; color: var(--text-2); }
-    /* 自动映射结果只读，P16 会在这里增加手工修正控件。 */
+    .header-chip.empty { color: #94a3b8; }
+
     #mapping-list {
       max-height: 300px; overflow: auto;
       border-top: 1px solid var(--border);
@@ -215,57 +91,32 @@
     .mapping-target .group { color: var(--text-2); }
     .mapping-arrow { color: var(--text-2); text-align: center; }
     .mapping-row.unmatched .mapping-target { color: var(--error); }
-    #mapping-hint { margin-top: 5px; font-size: 10px; color: var(--text-2); }
-    .header-chip {
-      max-width: 100%; padding: 3px 6px;
-      border: 1px solid var(--border); border-radius: 3px;
-      background: #f8fafc; font-size: 12px;
-      overflow-wrap: anywhere;
+    .mapping-hint, .action-hint {
+      margin-top: 5px; color: var(--text-2); font-size: 10px;
     }
-    .header-chip .col {
-      margin-right: 4px; color: var(--primary);
-      font-family: Consolas, monospace;
-    }
-    .header-chip.empty { color: #94a3b8; }
 
-    #sheet-panel { overflow-x: auto; }
-    table.sheet { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 4px; }
-    table.sheet th, table.sheet td {
-      border: 1px solid #e2e8f0; padding: 3px 5px; text-align: left;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px;
+    #preview-panel { overflow-x: auto; }
+    .preview-summary { margin-bottom: 4px; color: var(--text-2); font-size: 11px; }
+    table.preview { border-collapse: collapse; width: 100%; font-size: 12px; }
+    table.preview th, table.preview td {
+      max-width: 90px; padding: 3px 5px;
+      border: 1px solid #e2e8f0; text-align: left;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    table.sheet th.col-letter { background: #f1f5f9; color: var(--text-2); text-align: center; }
-    table.sheet td.row-no { background: #f1f5f9; color: var(--text-2); text-align: center; width: 22px; }
-    table.sheet td.plugin-header {
-      background: var(--border); color: var(--primary); font-weight: 600;
+    table.preview th {
+      background: #f1f5f9; color: var(--text-2); font-weight: 600;
     }
-    table.sheet td.plugin-header.empty { background: #f8fafc; color: #cbd5e1; font-weight: 400; }
-    table.sheet td.group-header {
-      background: var(--border); color: var(--primary);
-      font-weight: 600; text-align: center;
+    table.preview td.row-no {
+      width: 24px; background: #f1f5f9;
+      color: var(--text-2); text-align: center;
     }
-    table.sheet td.src-header { background: #f8fafc; color: var(--text-2); font-weight: 600; }
-    table.sheet td.hover { outline: 2px dashed var(--primary); outline-offset: -2px; }
-    .sheet-name { color: var(--text-2); font-size: 12px; }
-    .type-summary {
-      margin-top: 4px; color: var(--text-2);
-      font-size: 11px; line-height: 1.5;
-    }
-    .type-summary strong { color: var(--text); font-weight: 600; }
-
-    pre {
-      font-family: Consolas, monospace; font-size: 12px;
-      background: #0f172a; color: #e2e8f0; padding: 8px;
-      border-radius: 4px; overflow: auto; max-height: 340px;
-      white-space: pre-wrap; word-break: break-all;
-    }
-    .result-ops { display: flex; gap: 4px; margin-top: 6px; }
-    .result-ops .small { flex: 1; }
+    .type-summary { margin-top: 4px; color: var(--text-2); font-size: 10px; }
 
     #toast {
-      position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
-      background: #0f172a; color: #fff; padding: 6px 12px; border-radius: 4px;
-      font-size: 12px; opacity: 0; pointer-events: none;
+      position: fixed; left: 50%; bottom: 16px; z-index: 10;
+      padding: 6px 12px; border-radius: 4px;
+      background: #0f172a; color: #fff; font-size: 12px;
+      opacity: 0; pointer-events: none; transform: translateX(-50%);
       transition: opacity 150ms;
     }
     #toast.show { opacity: 0.95; }
@@ -278,77 +129,49 @@
 <body>
   <div id="error-summary" class="hidden" tabindex="-1"></div>
 
-  <!-- 当前活动 Sheet 的只读元信息 -->
-  <div class="section">
+  <!-- 当前工作表只读信息 -->
+  <section class="section">
     <h2>当前工作表</h2>
     <div id="sheet-info" class="dim">正在读取工作表信息...</div>
-  </div>
+  </section>
 
-  <!-- 客户源表的表头，顺序与工作表列顺序一致 -->
-  <div class="section">
-    <h2>源表头 <span id="header-count" class="dim" style="font-weight:400"></span></h2>
+  <!-- 源表头 -->
+  <section class="section">
+    <h2>源表头 <span id="header-count" class="dim"></span></h2>
     <div id="source-headers" class="dim">正在读取源表头...</div>
-  </div>
+  </section>
 
-  <!-- 选择模板后才加载系统字段 -->
-  <div class="section">
-    <h2>模板 <span id="env-tag" class="dim" style="font-weight:400"></span></h2>
-    <select id="tpl-select" aria-label="选择模板"></select>
-    <div id="template-save" class="template-save hidden">
-      <input id="custom-template-name" type="text" maxlength="40" placeholder="我的模板名称" aria-label="我的模板名称">
-      <button class="small" id="btn-save-template">保存到我的模板</button>
-    </div>
-    <div id="template-library-meta" class="dim"></div>
-    <div id="tpl-hint" class="dim" style="font-size:12px;margin-top:4px"></div>
-    <div class="template-actions">
-      <button class="small hidden" id="btn-apply-template">应用到空白工作表</button>
-      <button class="small hidden" id="btn-clear-template">清除当前模板</button>
-    </div>
-    <div id="current-template" class="hidden" aria-live="polite"></div>
-    <!-- 选择模板后显示“产品定义 / 物料清单 / 工艺路线”等分组。 -->
-    <div id="template-groups"></div>
-    <details id="template-config" class="template-config hidden" open>
-      <summary>模板配置</summary>
-      <div id="template-config-groups"></div>
-      <div id="template-config-note" class="dim">字段调整仅在本次会话生效；存在未映射自定义字段时不能上传。</div>
-    </details>
-  </div>
+  <!-- 初版只保留一个 BOM 模板入口 -->
+  <section class="section">
+    <h2>BOM 模板 <span id="env-tag" class="dim"></span></h2>
+    <select id="tpl-select" aria-label="选择 BOM 模板"></select>
+    <div id="tpl-hint" class="dim" style="margin-top:4px;font-size:11px"></div>
+  </section>
 
-  <!-- 自动匹配结果只读展示；P16 再支持手工调整。 -->
-  <div class="section hidden" id="mapping-section">
-    <h2>字段自动映射 <span id="mapping-stats" class="dim" style="font-weight:400"></span></h2>
+  <!-- 自动表头匹配结果 -->
+  <section class="section hidden" id="mapping-section">
+    <h2>字段映射 <span id="mapping-stats" class="dim"></span></h2>
     <div id="mapping-list"></div>
-    <div id="mapping-hint" class="dim"></div>
-  </div>
+    <div id="mapping-hint" class="mapping-hint"></div>
+  </section>
 
-  <div class="section">
-    <h2>字段 <span id="field-count" class="dim" style="font-weight:400"></span></h2>
-    <div id="field-empty" class="dim">请选择模板</div>
-    <div id="field-list"></div>
-    <button class="primary" id="btn-upload" disabled>上传</button>
-    <div id="upload-hint" class="dim" style="font-size:12px;margin-top:4px"></div>
-  </div>
+  <!-- 前 20 行数据预览 -->
+  <section class="section">
+    <h2>BOM 数据预览 <span id="preview-stats" class="dim"></span></h2>
+    <div id="preview-panel" class="dim">正在读取数据...</div>
+  </section>
 
-  <div class="section">
-    <h2>工作表预览</h2>
-    <div id="sheet-panel"></div>
-  </div>
-
-  <div class="section hidden" id="result-section">
-    <h2>JSON 结果 <span id="res-stats" class="dim" style="font-weight:400"></span></h2>
-    <pre id="res-json"></pre>
-    <div class="result-ops">
-      <button class="small" id="btn-copy">复制</button>
-      <button class="small" id="btn-export">导出 .json</button>
-    </div>
-  </div>
+  <!-- 上传接口尚未接入，第一步只保留入口 -->
+  <section class="section">
+    <button class="primary" id="btn-one-click" disabled>一键导入 BOM</button>
+    <div id="import-hint" class="action-hint">上传接口将在下一步接入</div>
+  </section>
 
   <div id="toast"></div>
 
   <script src="js/ribbon.js"></script>
   <script src="js/core.js"></script>
   <script src="js/adapter.js"></script>
-  <script src="js/store.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>
 </body>

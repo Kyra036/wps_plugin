@@ -2,9 +2,9 @@
 <customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="OnAddinLoad">
   <ribbon startFromScratch="false">
     <tabs>
-      <tab id="fieldMappingTab" label="字段映射">
-        <group id="fieldMappingGroup" label="数据映射">
-          <button id="btnShowMappingPane" label="打开字段映射" onAction="OnAction" getEnabled="OnGetEnabled" getImage="GetImage" size="large"/>
+      <tab id="fieldMappingTab" label="BOM导入">
+        <group id="fieldMappingGroup" label="BOM导入">
+          <button id="btnShowMappingPane" label="打开BOM导入" onAction="OnAction" getEnabled="OnGetEnabled" getImage="GetImage" size="large"/>
         </group>
       </tab>
     </tabs>
