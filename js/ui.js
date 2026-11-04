@@ -8,6 +8,7 @@
 
   const UI = {
     templates: [],
+    customTemplates: [], // 用户保存的模板，与内置模板分开维护
     fields: [], // 当前模板递归展开后的叶子字段
     currentTemplateId: null,
     order: [], // 叶子字段 id 的当前顺序，决定列位置
@@ -60,7 +61,7 @@
 
   function persist() {
     if (UI.currentTemplateId) UI.orders[UI.currentTemplateId] = UI.order.slice();
-    Store.save({ orders: UI.orders });
+    return Store.save({ orders: UI.orders, customTemplates: UI.customTemplates });
   }
 
   function safeFileName(text) {
@@ -125,6 +126,8 @@
     $("template-library-meta").textContent =
       `模板库：内置 ${builtInTemplates.length} 个 · 我的模板 ${customTemplates.length} 个`;
     const activeTemplate = currentTemplate();
+    $("template-save").classList.toggle("hidden", !activeTemplate);
+    $("btn-save-template").disabled = !activeTemplate || UI.busy || !!UI.drag;
     $("tpl-hint").textContent = activeTemplate
       ? `${activeTemplate.builtIn === true ? "内置模板" : "我的模板"}已加载，源工作表不会被修改`
       : "选择 BOM 模板后开始匹配源表头";
@@ -145,6 +148,64 @@
     UI.stale = false;
     renderAll();
     toast("已清除当前模板");
+  }
+
+  // 使用 JSON 深拷贝隔离运行时修改，避免“我的模板”和原模板共享 groups 对象。
+  function cloneTemplate(template) {
+    return JSON.parse(JSON.stringify(template));
+  }
+
+  function createCustomTemplateId() {
+    const suffix = Math.random().toString(36).slice(2, 8);
+    return `tpl_custom_${Date.now().toString(36)}_${suffix}`;
+  }
+
+  // 保存当前分组、字段、显隐和自定义字段，并立即切换到新模板。
+  function saveCurrentAsCustomTemplate() {
+    const source = currentTemplate();
+    const input = $("custom-template-name");
+    const name = input.value.trim();
+    if (!source) {
+      toast("请先选择模板");
+      return;
+    }
+    if (!name) {
+      input.focus();
+      toast("请输入模板名称");
+      return;
+    }
+    if (UI.templates.some((template) => template.name.toLowerCase() === name.toLowerCase())) {
+      input.focus();
+      toast("模板名称已存在");
+      return;
+    }
+
+    const template = cloneTemplate(source);
+    template.id = createCustomTemplateId();
+    template.name = name;
+    template.description = `基于“${source.name}”保存的自定义模板`;
+    template.builtIn = false;
+    template.version = 1;
+    template.sourceTemplateId = source.id;
+
+    const previousTemplateId = UI.currentTemplateId;
+    UI.templates.push(template);
+    UI.customTemplates.push(template);
+    UI.orders[template.id] = UI.order.slice();
+    UI.currentTemplateId = template.id;
+    if (!persist()) {
+      // 存储失败时回滚内存数据，避免界面显示一个刷新后就消失的模板。
+      UI.templates.pop();
+      UI.customTemplates.pop();
+      delete UI.orders[template.id];
+      UI.currentTemplateId = previousTemplateId;
+      showErrors(["保存到我的模板失败：浏览器本地存储不可用或空间不足"]);
+      return;
+    }
+
+    input.value = "";
+    renderAll();
+    toast("已保存到我的模板");
   }
 
   // 展示当前模板的来源、版本和有效字段数量，帮助确认选中的是哪套配置。
@@ -500,6 +561,7 @@
     $("tpl-select").disabled = UI.busy || !!UI.drag;
     // 拖拽或上传期间禁止清空模板，避免界面状态与进行中的操作冲突。
     $("btn-clear-template").disabled = UI.busy || !!UI.drag;
+    $("btn-save-template").disabled = !hasTemplate || UI.busy || !!UI.drag;
     $("upload-hint").textContent = !hasTemplate
       ? "选择模板后即可拖动排序并上传"
       : hasUnmappedField
@@ -823,12 +885,28 @@
     renderResult();
   }
 
+  // 本地模板可能来自旧版本或被手工修改，加载前做最小结构检查。
+  function isValidStoredTemplate(template) {
+    return !!template &&
+      typeof template.id === "string" &&
+      typeof template.name === "string" &&
+      Array.isArray(template.groups);
+  }
+
   function init(templates, adapter) {
-    UI.templates = templates;
     UI.adapter = adapter;
     const saved = Store.load();
     // 只恢复字段顺序；上次选择的模板不恢复，因此初始状态始终是“请选择模板”。
     UI.orders = saved.orders || {};
+    const templateIds = new Set(templates.map((template) => template.id));
+    UI.customTemplates = [];
+    saved.customTemplates.forEach((template) => {
+      if (isValidStoredTemplate(template) && !templateIds.has(template.id)) {
+        templateIds.add(template.id);
+        UI.customTemplates.push({ ...template, builtIn: false });
+      }
+    });
+    UI.templates = templates.concat(UI.customTemplates);
 
     $("tpl-select").addEventListener("change", (ev) => {
       if (ev.target.value) activateTemplate(ev.target.value, true);
@@ -837,6 +915,10 @@
     $("btn-copy").addEventListener("click", copyResult);
     $("btn-export").addEventListener("click", exportResult);
     $("btn-clear-template").addEventListener("click", clearCurrentTemplate);
+    $("btn-save-template").addEventListener("click", saveCurrentAsCustomTemplate);
+    $("custom-template-name").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") saveCurrentAsCustomTemplate();
+    });
     $("template-config-groups").addEventListener("change", (ev) => {
       if (!(ev.target instanceof HTMLInputElement) || ev.target.type !== "checkbox") return;
       updateFieldVisibility(
@@ -866,7 +948,6 @@
 
     $("env-tag").textContent = adapter.isMock ? "浏览器 mock 模式" : "WPS 环境";
     renderAll();
-
   }
 
   root.UI = { init };
