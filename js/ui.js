@@ -105,18 +105,45 @@
 
   function renderTemplateBar() {
     const select = $("tpl-select");
+    // 按 builtIn 将模板分成系统模板和用户模板，后续“我的模板”直接进入第二组。
+    const builtInTemplates = UI.templates.filter((template) => template.builtIn === true);
+    const customTemplates = UI.templates.filter((template) => template.builtIn !== true);
+    const templateOption = (template) =>
+      `<option value="${esc(template.id)}"${template.id === UI.currentTemplateId ? " selected" : ""}>` +
+      `${esc(template.name)}</option>`;
     const placeholder = '<option value="" disabled' +
       (UI.currentTemplateId ? "" : " selected") + ">请选择模板</option>";
-    select.innerHTML = placeholder + UI.templates
-      .map((t) => `<option value="${esc(t.id)}"${t.id === UI.currentTemplateId ? " selected" : ""}>${esc(t.name)}</option>`)
-      .join("");
+    const customOptions = customTemplates.length
+      ? customTemplates.map(templateOption).join("")
+      : '<option value="" disabled>暂无自定义模板</option>';
+    select.innerHTML = placeholder +
+      `<optgroup label="内置模板">${builtInTemplates.map(templateOption).join("")}</optgroup>` +
+      `<optgroup label="我的模板">${customOptions}</optgroup>`;
     select.value = UI.currentTemplateId || "";
     select.disabled = UI.busy || !!UI.drag;
-    $("tpl-hint").textContent = UI.currentTemplateId
-      ? "模板已从内置模板库加载，源工作表不会被修改"
+    $("template-library-meta").textContent =
+      `模板库：内置 ${builtInTemplates.length} 个 · 我的模板 ${customTemplates.length} 个`;
+    const activeTemplate = currentTemplate();
+    $("tpl-hint").textContent = activeTemplate
+      ? `${activeTemplate.builtIn === true ? "内置模板" : "我的模板"}已加载，源工作表不会被修改`
       : "选择 BOM 模板后开始匹配源表头";
+    const clearButton = $("btn-clear-template");
+    clearButton.classList.toggle("hidden", !UI.currentTemplateId);
+    clearButton.disabled = UI.busy || !!UI.drag;
     renderCurrentTemplate();
     renderTemplateGroups();
+    renderTemplateConfig();
+  }
+
+  // 清除当前选择只影响任务窗格状态，不修改本地字段顺序或模板定义。
+  function clearCurrentTemplate() {
+    UI.currentTemplateId = null;
+    UI.fields = [];
+    UI.order = [];
+    UI.result = null;
+    UI.stale = false;
+    renderAll();
+    toast("已清除当前模板");
   }
 
   // 展示当前模板的来源、版本和有效字段数量，帮助确认选中的是哪套配置。
@@ -171,6 +198,54 @@
       chip.className = "group-chip";
       chip.textContent = group.label || group.key;
       list.appendChild(chip);
+    });
+  }
+
+  // 模板配置区展示完整分组和字段状态；当前只读，P10 再开放字段显隐操作。
+  function renderTemplateConfig() {
+    const panel = $("template-config");
+    const list = $("template-config-groups");
+    const template = currentTemplate();
+    list.innerHTML = "";
+    panel.classList.toggle("hidden", !template);
+    if (!template) return;
+
+    const groups = Array.isArray(template.groups) ? template.groups : [];
+    groups.forEach((group, groupIndex) => {
+      const groupBox = document.createElement("details");
+      groupBox.className = "config-group";
+      // 默认展开第一个分组，其他分组保持折叠，避免窄任务窗格一次显示过长。
+      groupBox.open = groupIndex === 0;
+
+      const fields = Array.isArray(group.fields) ? group.fields : [];
+      const visibleCount = fields.filter((field) => field.visible !== false).length;
+      const groupState = group.visible === false ? "分组隐藏" : `${visibleCount}/${fields.length} 个字段可见`;
+      const summary = document.createElement("summary");
+      summary.textContent = `${group.label || group.key} · ${groupState}`;
+      groupBox.appendChild(summary);
+
+      fields.forEach((field) => {
+        const row = document.createElement("div");
+        row.className = "config-field";
+
+        const state = document.createElement("span");
+        const hidden = field.visible === false;
+        state.className = "visibility-state" + (hidden ? " hidden-field" : "");
+        state.textContent = hidden ? "隐藏" : "显示";
+
+        const name = document.createElement("span");
+        name.className = "field-name";
+        name.textContent = field.label || field.key;
+
+        const key = document.createElement("span");
+        key.className = "field-key";
+        key.textContent = `${group.key}.${field.key}`;
+
+        row.append(state, name, key);
+        groupBox.appendChild(row);
+      });
+
+      list.appendChild(groupBox);
     });
   }
 
@@ -242,6 +317,8 @@
     const canUpload = hasTemplate && UI.fields.length > 0 && !UI.busy && !UI.drag;
     $("btn-upload").disabled = !canUpload;
     $("tpl-select").disabled = UI.busy || !!UI.drag;
+    // 拖拽或上传期间禁止清空模板，避免界面状态与进行中的操作冲突。
+    $("btn-clear-template").disabled = UI.busy || !!UI.drag;
     $("upload-hint").textContent = hasTemplate
       ? "上传会按当前字段顺序读取源表头下方的数据，不修改工作表"
       : "选择模板后即可拖动排序并上传";
@@ -571,6 +648,7 @@
     $("btn-upload").addEventListener("click", upload);
     $("btn-copy").addEventListener("click", copyResult);
     $("btn-export").addEventListener("click", exportResult);
+    $("btn-clear-template").addEventListener("click", clearCurrentTemplate);
 
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && UI.drag) cancelDrag();

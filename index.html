@@ -123,6 +123,45 @@
       background: #fff; color: var(--primary); font-size: 10px;
     }
     #template-meta { margin-top: 3px; font-size: 11px; color: var(--text-2); }
+    #template-library-meta {
+      margin-top: 4px; color: var(--text-2); font-size: 11px;
+    }
+    /* 模板操作区只放与当前选择相关的命令，清除不会删除模板定义。 */
+    .template-actions {
+      display: flex; justify-content: flex-end; margin-top: 6px;
+    }
+    /* 模板配置当前为只读预览，后续字段开关会在这里扩展。 */
+    .template-config {
+      margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+    }
+    .template-config > summary {
+      cursor: pointer; color: var(--text); font-size: 12px; font-weight: 600;
+    }
+    .config-group {
+      margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--border);
+    }
+    .config-group > summary {
+      cursor: pointer; color: var(--text-2); font-size: 12px;
+    }
+    .config-field {
+      display: grid; grid-template-columns: 36px minmax(0, 1fr);
+      gap: 2px 6px; padding: 4px 0 4px 8px;
+      border-top: 1px dashed #e2e8f0;
+    }
+    .config-field .field-name {
+      min-width: 0; font-size: 12px; overflow-wrap: anywhere;
+    }
+    .config-field .field-key {
+      grid-column: 2; color: var(--text-2);
+      font-family: Consolas, monospace; font-size: 10px;
+    }
+    .visibility-state {
+      padding: 1px 4px; border-radius: 3px; text-align: center;
+      background: #eff6ff; color: var(--primary); font-size: 10px;
+    }
+    .visibility-state.hidden-field {
+      background: #f1f5f9; color: #64748b;
+    }
     .header-chip {
       max-width: 100%; padding: 3px 6px;
       border: 1px solid var(--border); border-radius: 3px;
@@ -197,10 +236,18 @@
   <div class="section">
     <h2>模板 <span id="env-tag" class="dim" style="font-weight:400"></span></h2>
     <select id="tpl-select" aria-label="选择模板"></select>
+    <div id="template-library-meta" class="dim"></div>
     <div id="tpl-hint" class="dim" style="font-size:12px;margin-top:4px"></div>
+    <div class="template-actions">
+      <button class="small hidden" id="btn-clear-template">清除当前模板</button>
+    </div>
     <div id="current-template" class="hidden" aria-live="polite"></div>
     <!-- 选择模板后显示“产品定义 / 物料清单 / 工艺路线”等分组。 -->
     <div id="template-groups"></div>
+    <details id="template-config" class="template-config hidden" open>
+      <summary>模板配置</summary>
+      <div id="template-config-groups"></div>
+    </details>
   </div>
 
   <div class="section">
