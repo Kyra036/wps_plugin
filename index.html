@@ -116,6 +116,22 @@
     .mapping-hint, .action-hint {
       margin-top: 5px; color: var(--text-2); font-size: 10px;
     }
+    .existing-parts {
+      max-height: 130px; margin-top: 5px; overflow: auto;
+      border-top: 1px dashed #e2e8f0;
+    }
+    .existing-part-item {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 6px; padding: 4px 0;
+      border-bottom: 1px solid #f1f5f9; font-size: 11px;
+    }
+    .existing-part-item span {
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .existing-part-item .part-no { font-weight: 600; }
+    .existing-part-more {
+      padding-top: 4px; color: var(--text-2); font-size: 10px;
+    }
 
     #preview-panel { overflow-x: auto; }
     .preview-summary { margin-bottom: 4px; color: var(--text-2); font-size: 11px; }
@@ -192,6 +208,7 @@
       <option value="">请先查询模具</option>
     </select>
     <div id="mold-part-status" class="action-hint">选择模具后读取已有零件数量</div>
+    <div id="existing-parts-preview" class="existing-parts hidden"></div>
   </section>
 
   <!-- 自动表头匹配结果 -->

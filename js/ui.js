@@ -16,9 +16,9 @@
     previewRequestId: 0,
     molds: [],
     selectedMoldId: "",
-    existingPartCount: null,
-    partCountLoading: false,
-    partCountRequestId: 0,
+    existingParts: [],
+    existingPartsLoading: false,
+    existingPartsRequestId: 0,
     connection: { token: "" },
     busy: false,
   };
@@ -339,34 +339,68 @@
       element.textContent = "选择模具后读取已有零件数量";
       return;
     }
-    if (UI.partCountLoading) {
-      element.textContent = "正在读取目标模具已有零件数量...";
+    if (UI.existingPartsLoading) {
+      element.textContent = "正在读取目标模具已有零件...";
       return;
     }
-    if (UI.existingPartCount !== null) {
-      element.textContent = `目标模具已有 ${UI.existingPartCount} 个零件`;
+    if (UI.existingParts.length > 0) {
+      element.textContent = `目标模具已有 ${UI.existingParts.length} 个零件`;
       return;
     }
-    element.textContent = "尚未读取已有零件数量";
+    element.textContent = "目标模具没有已有零件";
   }
 
-  // 只调用查询接口获取 total，本函数不包含新增、更新或删除操作。
-  async function loadExistingPartCount(moldId) {
-    const requestId = ++UI.partCountRequestId;
-    UI.partCountLoading = true;
-    UI.existingPartCount = null;
+  // 只展示前 20 条已有零件，完整数组保留在内存中供后续查重使用。
+  function renderExistingPartsPreview() {
+    const element = $("existing-parts-preview");
+    element.innerHTML = "";
+    if (!selectedMold() || UI.existingPartsLoading || UI.existingParts.length === 0) {
+      element.classList.add("hidden");
+      return;
+    }
+
+    element.classList.remove("hidden");
+    UI.existingParts.slice(0, 20).forEach((part) => {
+      const row = document.createElement("div");
+      row.className = "existing-part-item";
+      const partNo = document.createElement("span");
+      partNo.className = "part-no";
+      partNo.textContent = part.partNo || "（无编号）";
+      partNo.title = part.partNo || "";
+      const partName = document.createElement("span");
+      partName.textContent = part.partName || "（无名称）";
+      partName.title = part.partName || "";
+      row.append(partNo, partName);
+      element.appendChild(row);
+    });
+
+    if (UI.existingParts.length > 20) {
+      const more = document.createElement("div");
+      more.className = "existing-part-more";
+      more.textContent = `还有 ${UI.existingParts.length - 20} 个零件未显示`;
+      element.appendChild(more);
+    }
+  }
+
+  // 只调用查询接口读取零件，本函数不包含新增、更新或删除操作。
+  async function loadExistingParts(moldId) {
+    const requestId = ++UI.existingPartsRequestId;
+    UI.existingPartsLoading = true;
+    UI.existingParts = [];
     renderMoldPartStatus();
+    renderExistingPartsPreview();
     try {
-      const count = await BomApi.countParts(moldId);
-      if (requestId !== UI.partCountRequestId) return;
-      UI.existingPartCount = count;
+      const parts = await BomApi.listParts(moldId);
+      if (requestId !== UI.existingPartsRequestId) return;
+      UI.existingParts = parts;
     } catch (error) {
-      if (requestId !== UI.partCountRequestId) return;
-      showError(`读取已有零件数量失败：${error.message}`);
+      if (requestId !== UI.existingPartsRequestId) return;
+      showError(`读取已有零件失败：${error.message}`);
     } finally {
-      if (requestId === UI.partCountRequestId) {
-        UI.partCountLoading = false;
+      if (requestId === UI.existingPartsRequestId) {
+        UI.existingPartsLoading = false;
         renderMoldPartStatus();
+        renderExistingPartsPreview();
         renderImportState();
       }
     }
@@ -375,13 +409,14 @@
   // 所有选择模具的入口都走这里，确保加载状态和请求序号同时更新。
   function selectMold(moldId) {
     UI.selectedMoldId = moldId || "";
-    UI.existingPartCount = null;
-    UI.partCountLoading = false;
-    UI.partCountRequestId += 1;
+    UI.existingParts = [];
+    UI.existingPartsLoading = false;
+    UI.existingPartsRequestId += 1;
     renderMoldOptions();
     renderMoldPartStatus();
+    renderExistingPartsPreview();
     renderImportState();
-    if (UI.selectedMoldId) loadExistingPartCount(UI.selectedMoldId);
+    if (UI.selectedMoldId) loadExistingParts(UI.selectedMoldId);
   }
 
   // 当前步骤只验证连接和目标模具选择，上传入口留到下一步接入。
@@ -400,9 +435,9 @@
     else if (missingFields > 0) message = `仍有 ${missingFields} 个 BOM 字段没有源列`;
     else if (!UI.connection.token) message = "请先在开发登录中配置平台令牌";
     else if (!mold) message = "请先查询并选择目标模具";
-    else if (UI.partCountLoading) message = "正在读取目标模具已有零件数量...";
-    else if (UI.existingPartCount !== null) {
-      message = `已选择目标模具：${mold.moldNo || mold.moldName || "未命名模具"}，已有 ${UI.existingPartCount} 个零件`;
+    else if (UI.existingPartsLoading) message = "正在读取目标模具已有零件...";
+    else if (UI.existingParts.length > 0) {
+      message = `已选择目标模具：${mold.moldNo || mold.moldName || "未命名模具"}，已有 ${UI.existingParts.length} 个零件`;
     }
     else message = `已选择目标模具：${mold.moldNo || mold.moldName || "未命名模具"}`;
 
@@ -417,6 +452,7 @@
     renderTemplateBar();
     renderMoldOptions();
     renderMoldPartStatus();
+    renderExistingPartsPreview();
     renderMapping();
     renderPreview();
     renderImportState();
@@ -469,9 +505,9 @@
     let autoSelectMoldId = "";
     UI.busy = true;
     UI.selectedMoldId = "";
-    UI.existingPartCount = null;
-    UI.partCountLoading = false;
-    UI.partCountRequestId += 1;
+    UI.existingParts = [];
+    UI.existingPartsLoading = false;
+    UI.existingPartsRequestId += 1;
     button.disabled = true;
     button.textContent = "查询中";
     $("mold-select").disabled = true;

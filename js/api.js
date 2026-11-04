@@ -127,30 +127,52 @@
     return Array.isArray(payload && payload.data) ? payload.data : [];
   }
 
-  // 只读取分页总数，不加载零件明细；当前步骤不会修改目标模具。
-  async function countParts(moldId) {
+  // 按页读取目标模具的全部零件；当前步骤不会修改目标模具。
+  async function listParts(moldId) {
     if (moldId === undefined || moldId === null || String(moldId).trim() === "") {
       throw new Error("缺少目标模具 ID");
     }
 
-    const payload = await request("/workOrder/advanced/list", {
-      method: "POST",
-      json: {
-        moldId,
-        queryRequest: {
-          pageNum: 1,
-          pageSize: 1,
-          sort: [{ field: "createTime", order: "asc" }],
-          filter: [],
-          search: { fields: ["partName", "partNo"], keyword: "" },
+    const pageSize = 500;
+    const allParts = [];
+    let pageNum = 1;
+    let total = Infinity;
+
+    // 限制最多读取 20 页，避免异常分页数据造成无限请求。
+    while (pageNum <= 20 && allParts.length < total) {
+      const payload = await request("/workOrder/advanced/list", {
+        method: "POST",
+        json: {
+          moldId,
+          queryRequest: {
+            pageNum,
+            pageSize,
+            sort: [{ field: "createTime", order: "asc" }],
+            filter: [],
+            search: { fields: ["partName", "partNo"], keyword: "" },
+          },
         },
-      },
-    });
-    const data = payload && payload.data;
-    const total = Number(data && data.total);
-    if (Number.isFinite(total)) return Math.max(0, total);
-    if (Array.isArray(data && data.records)) return data.records.length;
-    return 0;
+      });
+      const data = payload && payload.data;
+      const rows = Array.isArray(data && data.records)
+        ? data.records
+        : Array.isArray(data && data.rows)
+          ? data.rows
+          : Array.isArray(data)
+            ? data
+            : [];
+      allParts.push(...rows);
+
+      const pageTotal = Number(data && data.total);
+      total = Number.isFinite(pageTotal) ? Math.max(0, pageTotal) : allParts.length;
+      if (rows.length === 0) break;
+      pageNum += 1;
+    }
+
+    if (allParts.length < total) {
+      throw new Error(`零件数量过多，仅读取到 ${allParts.length}/${total} 条`);
+    }
+    return allParts;
   }
 
   root.BomApi = {
@@ -160,6 +182,6 @@
     normalizeBaseUrl,
     normalizeToken,
     searchMolds,
-    countParts,
+    listParts,
   };
 })(typeof self !== "undefined" ? self : globalThis);
