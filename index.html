@@ -137,7 +137,7 @@
     }
     /* 模板操作区只放与当前选择相关的命令，清除不会删除模板定义。 */
     .template-actions {
-      display: flex; justify-content: flex-end; margin-top: 6px;
+      display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 4px; margin-top: 6px;
     }
     /* 模板配置当前为只读预览，后续字段开关会在这里扩展。 */
     .template-config {
@@ -220,6 +220,10 @@
       background: var(--border); color: var(--primary); font-weight: 600;
     }
     table.sheet td.plugin-header.empty { background: #f8fafc; color: #cbd5e1; font-weight: 400; }
+    table.sheet td.group-header {
+      background: var(--border); color: var(--primary);
+      font-weight: 600; text-align: center;
+    }
     table.sheet td.src-header { background: #f8fafc; color: var(--text-2); font-weight: 600; }
     table.sheet td.hover { outline: 2px dashed var(--primary); outline-offset: -2px; }
     .sheet-name { color: var(--text-2); font-size: 12px; }
@@ -277,6 +281,7 @@
     <div id="template-library-meta" class="dim"></div>
     <div id="tpl-hint" class="dim" style="font-size:12px;margin-top:4px"></div>
     <div class="template-actions">
+      <button class="small hidden" id="btn-apply-template">应用到空白工作表</button>
       <button class="small hidden" id="btn-clear-template">清除当前模板</button>
     </div>
     <div id="current-template" class="hidden" aria-live="polite"></div>

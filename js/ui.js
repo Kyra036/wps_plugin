@@ -134,6 +134,9 @@
     const clearButton = $("btn-clear-template");
     clearButton.classList.toggle("hidden", !UI.currentTemplateId);
     clearButton.disabled = UI.busy || !!UI.drag;
+    const applyButton = $("btn-apply-template");
+    applyButton.classList.toggle("hidden", !UI.currentTemplateId);
+    applyButton.disabled = !UI.currentTemplateId || UI.busy || !!UI.drag;
     renderCurrentTemplate();
     renderTemplateGroups();
     renderTemplateConfig();
@@ -206,6 +209,38 @@
     input.value = "";
     renderAll();
     toast("已保存到我的模板");
+  }
+
+  // 应用模板会写入两行表头；Mock 清空示例数据，WPS 只允许空白工作表。
+  async function applyCurrentTemplateToSheet() {
+    const template = currentTemplate();
+    if (!template) return;
+    const layout = Core.buildTemplateLayout(template);
+    if (layout.columns.length === 0) {
+      showErrors(["模板中没有可应用的可见字段"]);
+      return;
+    }
+
+    const message = UI.adapter.isMock
+      ? "浏览器 Mock 将清空当前示例数据并生成模板表头，刷新页面可恢复示例数据。继续吗？"
+      : "模板只会写入空白工作表。当前工作表如果有内容将拒绝操作。继续吗？";
+    if (!window.confirm(message)) return;
+
+    UI.busy = true;
+    updateControls();
+    try {
+      const result = await UI.adapter.applyTemplateLayout(layout);
+      UI.editingFieldId = null;
+      UI.result = null;
+      UI.stale = false;
+      renderAll();
+      toast(`已写入 ${result.rowCount} 行模板表头`);
+    } catch (err) {
+      showErrors([`应用模板失败：${err.message}`]);
+    } finally {
+      UI.busy = false;
+      updateControls();
+    }
   }
 
   // 展示当前模板的来源、版本和有效字段数量，帮助确认选中的是哪套配置。
@@ -562,6 +597,7 @@
     // 拖拽或上传期间禁止清空模板，避免界面状态与进行中的操作冲突。
     $("btn-clear-template").disabled = UI.busy || !!UI.drag;
     $("btn-save-template").disabled = !hasTemplate || UI.busy || !!UI.drag;
+    $("btn-apply-template").disabled = !hasTemplate || UI.busy || !!UI.drag;
     $("upload-hint").textContent = !hasTemplate
       ? "选择模板后即可拖动排序并上传"
       : hasUnmappedField
@@ -747,15 +783,18 @@
       return;
     }
     const headers = view.headers || [];
+    const groupHeaders = Array.isArray(view.groupHeaders) ? view.groupHeaders : [];
     const previewRows = view.rows.slice(0, PREVIEW_ROW_LIMIT);
     const colCount = Math.max(
       headers.length,
       ...previewRows.map((row) => row.length),
       0
     );
-    const rowSummary = view.rows.length > PREVIEW_ROW_LIMIT
-      ? `显示前 ${PREVIEW_ROW_LIMIT} 行，共 ${view.rows.length} 行`
-      : `显示 ${view.rows.length} 行`;
+    const rowSummary = groupHeaders.length && view.rows.length === 0
+      ? "模板表头已生成，暂无业务数据"
+      : view.rows.length > PREVIEW_ROW_LIMIT
+        ? `显示前 ${PREVIEW_ROW_LIMIT} 行，共 ${view.rows.length} 行`
+        : `显示 ${view.rows.length} 行`;
     const typeCounts = { text: 0, number: 0, date: 0, boolean: 0, empty: 0 };
     // 统计当前预览区域，帮助确认空值、数字和日期没有被错误转换。
     previewRows.forEach((row) => {
@@ -765,8 +804,11 @@
     const typeParts = Object.keys(typeLabels)
       .filter((type) => typeCounts[type] > 0)
       .map((type) => `${typeLabels[type]} <strong>${typeCounts[type]}</strong>`);
+    const layoutLabel = groupHeaders.length
+      ? "第 1 行分组表头 / 第 2 行字段表头"
+      : "第 1 行源表头";
     let html = `<div class="sheet-name">模拟工作表：${esc(view.name)}` +
-      `（第 1 行源表头） · ${rowSummary}</div>`;
+      `（${layoutLabel}） · ${rowSummary}</div>`;
     if (typeParts.length) {
       html += `<div class="type-summary">类型：${typeParts.join(" · ")}</div>`;
     }
@@ -777,6 +819,25 @@
     html += "</tr>";
 
     let rowNo = 1;
+    if (groupHeaders.length) {
+      html += `<tr><td class="row-no">${rowNo++}</td>`;
+      let columnIndex = 0;
+      while (columnIndex < colCount) {
+        const group = groupHeaders.find((item) =>
+          item.startIndex === columnIndex && item.endIndex >= item.startIndex
+        );
+        if (group) {
+          const span = group.endIndex - group.startIndex + 1;
+          html += `<td class="group-header" colspan="${span}">${esc(group.label || "")}</td>`;
+          columnIndex = group.endIndex + 1;
+        } else {
+          html += '<td class="group-header"></td>';
+          columnIndex++;
+        }
+      }
+      html += "</tr>";
+    }
+
     html += `<tr><td class="row-no">${rowNo++}</td>`;
     for (let c = 0; c < colCount; c++) {
       const value = headers[c];
@@ -915,6 +976,7 @@
     $("btn-copy").addEventListener("click", copyResult);
     $("btn-export").addEventListener("click", exportResult);
     $("btn-clear-template").addEventListener("click", clearCurrentTemplate);
+    $("btn-apply-template").addEventListener("click", applyCurrentTemplateToSheet);
     $("btn-save-template").addEventListener("click", saveCurrentAsCustomTemplate);
     $("custom-template-name").addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") saveCurrentAsCustomTemplate();

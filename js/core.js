@@ -184,6 +184,43 @@
     };
   }
 
+  /**
+   * 将可见模板字段转换成两行表头布局。
+   * 返回列使用 0 基索引；WPS 适配器写入时再转换成 A/B/C 列字母。
+   */
+  function buildTemplateLayout(template) {
+    const leaves = flattenTemplate(template);
+    const columns = leaves.map((leaf) => ({
+      key: leaf.id,
+      label: leaf.label,
+      groupKey: leaf.path[0],
+      groupLabel: leaf.groupLabels[0] || "未分组",
+      width: Math.max(10, Math.min(24, String(leaf.label).length * 2 + 4)),
+    }));
+    const groups = [];
+    columns.forEach((column, index) => {
+      const previous = groups[groups.length - 1];
+      if (previous && previous.label === column.groupLabel) {
+        previous.endIndex = index;
+        previous.width += column.width;
+      } else {
+        groups.push({
+          key: column.groupKey,
+          label: column.groupLabel,
+          startIndex: index,
+          endIndex: index,
+          width: column.width,
+        });
+      }
+    });
+    return {
+      templateId: template.id,
+      templateName: template.name,
+      columns,
+      groups,
+    };
+  }
+
   return {
     RESULT_VERSION,
     colLetter,
@@ -198,5 +235,6 @@
     classifyCell,
     buildRecords,
     buildExport,
+    buildTemplateLayout,
   };
 });

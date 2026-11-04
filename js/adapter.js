@@ -15,6 +15,18 @@
     return value;
   }
 
+  // WPS Range 使用 A/B/C 地址；该函数把 0 基索引转换成列字母。
+  function columnLetter(index) {
+    let value = "";
+    let number = index + 1;
+    while (number > 0) {
+      const remainder = (number - 1) % 26;
+      value = String.fromCharCode(65 + remainder) + value;
+      number = Math.floor((number - 1) / 26);
+    }
+    return value;
+  }
+
   function downloadJson(json, filename) {
     const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json;charset=utf-8" });
     const anchor = document.createElement("a");
@@ -31,6 +43,7 @@
       this.isMock = true;
       this.name = mockSheet.name;
       this.headers = (mockSheet.headers || []).slice();
+      this.groupHeaders = [];
       // dateColumns 使用表头名称声明，避免把列字母或位置写死在 Mock 数据里。
       const dateColumns = new Set(mockSheet.dateColumns || []);
       const dateIndexes = new Set(
@@ -66,7 +79,7 @@
         name: this.name,
         startRow: 1,
         startColumn: 1,
-        rowCount: 1 + this.rows.length,
+        rowCount: (this.groupHeaders.length ? 1 : 0) + 1 + this.rows.length,
         columnCount: Math.max(
           this.headers.length,
           ...this.rows.map((row) => row.length),
@@ -85,11 +98,21 @@
       downloadJson(json, filename);
     }
 
+    // Mock 应用模板时清空示例数据，模拟向空白工作表创建两行表头。
+    async applyTemplateLayout(layout) {
+      this.headers = layout.columns.map((column) => column.label);
+      this.groupHeaders = layout.groups.map((group) => ({ ...group }));
+      this.rows = [];
+      this.highlightCol = null;
+      return { sheetName: this.name, rowCount: 2, columnCount: this.headers.length };
+    }
+
     // 模拟工作表视图，供任务窗格预览源表头和业务数据。
     getSheetView() {
       return {
         name: this.name,
         headers: this.headers.slice(),
+        groupHeaders: this.groupHeaders.map((group) => ({ ...group })),
         rows: this.rows.map((row) => row.slice()),
         highlightCol: this.highlightCol,
       };
@@ -107,14 +130,22 @@
       return this.app.ActiveSheet;
     }
 
-    _headerKey(sheet) {
+    _sheetStorageKey(prefix, sheet) {
       let book = "";
       try {
         book = this.app.ActiveWorkbook.Name;
       } catch (_) {
         /* 工作簿名不可用时退化为按工作表名记录 */
       }
-      return `field_mapping_header|${book}|${sheet.Name}`;
+      return `${prefix}|${book}|${sheet.Name}`;
+    }
+
+    _headerKey(sheet) {
+      return this._sheetStorageKey("field_mapping_header", sheet);
+    }
+
+    _templateLayoutKey(sheet) {
+      return this._sheetStorageKey("field_mapping_template_layout", sheet);
     }
 
     _hasHeaderMark(sheet) {
@@ -132,8 +163,93 @@
       }
     }
 
+    _hasTemplateLayoutMark(sheet) {
+      const key = this._templateLayoutKey(sheet);
+      try {
+        return localStorage.getItem(key) === "1" ||
+          this.app.PluginStorage.getItem(key) === "1";
+      } catch (_) {
+        return false;
+      }
+    }
+
+    _markTemplateLayout(sheet) {
+      const key = this._templateLayoutKey(sheet);
+      try {
+        localStorage.setItem(key, "1");
+      } catch (_) {
+        // 任务窗格存储不可用时忽略。
+      }
+      try {
+        this.app.PluginStorage.setItem(key, "1");
+      } catch (_) {
+        // WPS 存储不可用时不影响已经写入的表头。
+      }
+    }
+
     _usedRange(sheet) {
       return typeof sheet.UsedRange === "function" ? sheet.UsedRange() : sheet.UsedRange;
+    }
+
+    // 只允许写入空白工作表，避免“应用模板”覆盖客户已有数据。
+    _isBlankSheet(sheet) {
+      const used = this._usedRange(sheet);
+      if (!used) return true;
+      const rowCount = Number(used.Rows && used.Rows.Count) || 0;
+      const columnCount = Number(used.Columns && used.Columns.Count) || 0;
+      for (let r = 0; r < rowCount; r++) {
+        for (let c = 0; c < columnCount; c++) {
+          const value = sheet.Cells.Item(used.Row + r, used.Column + c).Value2;
+          if (value !== null && value !== undefined && String(value).trim() !== "") return false;
+        }
+      }
+      return true;
+    }
+
+    // 第 1 行写入并合并分组表头，第 2 行写入字段表头。
+    async applyTemplateLayout(layout) {
+      const sheet = this._sheet();
+      if (!this._isBlankSheet(sheet)) {
+        throw new Error("当前工作表已有内容，请先新建或切换到空白工作表");
+      }
+
+      layout.groups.forEach((group) => {
+        const start = columnLetter(group.startIndex);
+        const end = columnLetter(group.endIndex);
+        const range = sheet.Range(`${start}1:${end}1`);
+        try {
+          range.Merge();
+        } catch (_) {
+          try {
+            range.Merge = true;
+          } catch (_) {
+            // 不支持合并时仍保留该组起始单元格的文字。
+          }
+        }
+        range.Value2 = group.label;
+        try {
+          range.Interior.Color = 0xfeeadb; // 浅蓝色，BGR 顺序
+          range.Font.Bold = true;
+          range.HorizontalAlignment = -4108; // xlCenter
+        } catch (_) {
+          // 分组样式失败不影响字段表头。
+        }
+      });
+
+      layout.columns.forEach((column, index) => {
+        const cell = sheet.Cells.Item(2, index + 1);
+        cell.Value2 = column.label;
+        try {
+          cell.Interior.Color = 0xf8fafc;
+          cell.Font.Bold = true;
+          cell.HorizontalAlignment = -4131; // xlLeft
+          sheet.Columns.Item(index + 1).ColumnWidth = column.width;
+        } catch (_) {
+          // 单个列宽或样式失败不影响其他字段。
+        }
+      });
+      this._markTemplateLayout(sheet);
+      return { sheetName: sheet.Name, rowCount: 2, columnCount: layout.columns.length };
     }
 
     async readRows(colCount) {
@@ -141,7 +257,7 @@
       const used = this._usedRange(sheet);
       if (!used) return [];
       // 新工作簿从 UsedRange 首行读取表头；旧工作簿则跳过历史插件表头。
-      const sourceHeaderRow = this._hasHeaderMark(sheet)
+      const sourceHeaderRow = (this._hasTemplateLayoutMark(sheet) || this._hasHeaderMark(sheet))
         ? LEGACY_SOURCE_HEADER_ROW
         : (Number(used.Row) || 1);
       const dataStartRow = sourceHeaderRow + 1;
@@ -185,7 +301,9 @@
       if (!used) return [];
 
       // 兼容旧工作簿：历史插件表头存在时，原表头在第 2 行。
-      const row = this._hasHeaderMark(sheet) ? LEGACY_SOURCE_HEADER_ROW : (Number(used.Row) || 1);
+      const row = (this._hasTemplateLayoutMark(sheet) || this._hasHeaderMark(sheet))
+        ? LEGACY_SOURCE_HEADER_ROW
+        : (Number(used.Row) || 1);
       const startColumn = Number(used.Column) || 1;
       const columnCount = Number(used.Columns && used.Columns.Count) || 0;
       const headers = [];
