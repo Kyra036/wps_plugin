@@ -69,9 +69,36 @@
       return this.name;
     }
 
+    // 返回统一的表头结构；Mock 应用模板后自动进入 grouped 模式。
+    getHeaderInfo() {
+      const grouped = this.groupHeaders.length > 0;
+      const headers = this.headers.map((label, index) => {
+        const group = grouped
+          ? this.groupHeaders.find((item) => index >= item.startIndex && index <= item.endIndex)
+          : null;
+        const groupLabel = group ? String(group.label || "").trim() : "";
+        const fieldLabel = String(label || "").trim();
+        return {
+          label: fieldLabel,
+          groupLabel,
+          fullLabel: groupLabel ? `${groupLabel} / ${fieldLabel}` : fieldLabel,
+          path: groupLabel ? [groupLabel, fieldLabel] : [fieldLabel],
+          columnIndex: index,
+          column: columnLetter(index),
+        };
+      });
+      return {
+        mode: grouped ? "grouped" : "single",
+        headerRows: grouped ? 2 : 1,
+        dataStartRow: grouped ? 3 : 2,
+        startColumn: 1,
+        headers,
+      };
+    }
+
     getSourceHeaders() {
       // 返回副本，防止 UI 修改数组时污染 Mock 工作表。
-      return this.headers.map((value) => value === null || value === undefined ? "" : String(value));
+      return this.getHeaderInfo().headers.map((header) => header.fullLabel);
     }
 
     getSheetInfo() {
@@ -206,6 +233,57 @@
       return true;
     }
 
+    _readRowValues(sheet, row, startColumn, columnCount) {
+      const values = [];
+      for (let offset = 0; offset < columnCount; offset++) {
+        const value = sheet.Cells.Item(row, startColumn + offset).Value2;
+        values.push(value === null || value === undefined ? "" : String(value).trim());
+      }
+      return values;
+    }
+
+    // 自动区分单行表头和应用模板后生成的两行分组表头。
+    getHeaderInfo() {
+      const sheet = this._sheet();
+      const used = this._usedRange(sheet);
+      if (!used) {
+        return { mode: "empty", headerRows: 0, dataStartRow: 1, startColumn: 1, headers: [] };
+      }
+
+      const startRow = Number(used.Row) || 1;
+      const startColumn = Number(used.Column) || 1;
+      const columnCount = Number(used.Columns && used.Columns.Count) || 0;
+      const grouped = this._hasTemplateLayoutMark(sheet);
+      const legacyHeader = !grouped && this._hasHeaderMark(sheet);
+      const fieldRow = grouped ? startRow + 1 : legacyHeader ? LEGACY_SOURCE_HEADER_ROW : startRow;
+      const fieldValues = this._readRowValues(sheet, fieldRow, startColumn, columnCount);
+      let groupValues = [];
+      if (grouped) {
+        groupValues = this._readRowValues(sheet, startRow, startColumn, columnCount);
+      }
+
+      let currentGroup = "";
+      const headers = fieldValues.map((fieldLabel, index) => {
+        if (grouped && groupValues[index]) currentGroup = groupValues[index];
+        const groupLabel = grouped ? currentGroup : "";
+        return {
+          label: fieldLabel,
+          groupLabel,
+          fullLabel: groupLabel ? `${groupLabel} / ${fieldLabel}` : fieldLabel,
+          path: groupLabel ? [groupLabel, fieldLabel] : [fieldLabel],
+          columnIndex: index,
+          column: columnLetter(startColumn - 1 + index),
+        };
+      });
+      return {
+        mode: grouped ? "grouped" : "single",
+        headerRows: grouped ? 2 : 1,
+        dataStartRow: fieldRow + 1,
+        startColumn,
+        headers,
+      };
+    }
+
     // 第 1 行写入并合并分组表头，第 2 行写入字段表头。
     async applyTemplateLayout(layout) {
       const sheet = this._sheet();
@@ -256,11 +334,8 @@
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
       if (!used) return [];
-      // 新工作簿从 UsedRange 首行读取表头；旧工作簿则跳过历史插件表头。
-      const sourceHeaderRow = (this._hasTemplateLayoutMark(sheet) || this._hasHeaderMark(sheet))
-        ? LEGACY_SOURCE_HEADER_ROW
-        : (Number(used.Row) || 1);
-      const dataStartRow = sourceHeaderRow + 1;
+      // 表头识别逻辑集中到 getHeaderInfo，单行和两行布局使用不同数据起始行。
+      const dataStartRow = this.getHeaderInfo().dataStartRow;
       const lastRow = used.Row + used.Rows.Count - 1;
       if (lastRow < dataStartRow) return [];
       const rows = [];
@@ -296,22 +371,7 @@
     }
 
     getSourceHeaders() {
-      const sheet = this._sheet();
-      const used = this._usedRange(sheet);
-      if (!used) return [];
-
-      // 兼容旧工作簿：历史插件表头存在时，原表头在第 2 行。
-      const row = (this._hasTemplateLayoutMark(sheet) || this._hasHeaderMark(sheet))
-        ? LEGACY_SOURCE_HEADER_ROW
-        : (Number(used.Row) || 1);
-      const startColumn = Number(used.Column) || 1;
-      const columnCount = Number(used.Columns && used.Columns.Count) || 0;
-      const headers = [];
-      for (let offset = 0; offset < columnCount; offset++) {
-        const value = sheet.Cells.Item(row, startColumn + offset).Value2;
-        headers.push(value === null || value === undefined ? "" : String(value).trim());
-      }
-      return headers;
+      return this.getHeaderInfo().headers.map((header) => header.fullLabel);
     }
 
     async highlightColumn() {

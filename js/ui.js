@@ -730,11 +730,23 @@
     const count = $("header-count");
     if (!list || !count) return;
 
-    let headers;
+    let headerInfo;
     try {
-      headers = UI.adapter && typeof UI.adapter.getSourceHeaders === "function"
-        ? UI.adapter.getSourceHeaders()
-        : [];
+      if (UI.adapter && typeof UI.adapter.getHeaderInfo === "function") {
+        headerInfo = UI.adapter.getHeaderInfo();
+      } else {
+        const fallback = UI.adapter && typeof UI.adapter.getSourceHeaders === "function"
+          ? UI.adapter.getSourceHeaders()
+          : [];
+        headerInfo = {
+          mode: "single",
+          headers: fallback.map((label, index) => ({
+            fullLabel: label,
+            columnIndex: index,
+            column: Core.colLetter(index),
+          })),
+        };
+      }
     } catch (err) {
       count.textContent = "";
       list.className = "error-text";
@@ -742,7 +754,9 @@
       return;
     }
 
-    count.textContent = `${headers.length} 列`;
+    const headers = Array.isArray(headerInfo.headers) ? headerInfo.headers : [];
+    const headerMode = headerInfo.mode === "grouped" ? "两行分组表头" : "单行表头";
+    count.textContent = `${headers.length} 列 · ${headerMode}`;
     list.className = "";
     list.innerHTML = "";
     if (headers.length === 0) {
@@ -752,15 +766,18 @@
     }
 
     // 按源列顺序生成表头标签，空表头也保留列位置。
+    // 两行表头使用“分组 / 字段”作为完整显示名，并保留实际列字母。
     headers.forEach((header, index) => {
       const chip = document.createElement("span");
-      chip.className = "header-chip" + (header ? "" : " empty");
+      const fullLabel = header.fullLabel || header.label || "";
+      chip.className = "header-chip" + (fullLabel ? "" : " empty");
+      chip.title = header.path ? header.path.join(" / ") : fullLabel;
 
       const column = document.createElement("span");
       column.className = "col";
-      column.textContent = Core.colLetter(index);
+      column.textContent = header.column || Core.colLetter(index);
 
-      chip.append(column, document.createTextNode(header || "（空表头）"));
+      chip.append(column, document.createTextNode(fullLabel || "（空表头）"));
       list.appendChild(chip);
     });
   }
