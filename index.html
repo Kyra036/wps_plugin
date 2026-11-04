@@ -18,7 +18,7 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 340px; padding: 8px;
+      width: 360px; padding: 8px;
       background: var(--bg); color: var(--text);
       font: 13px "Microsoft YaHei", "Segoe UI", sans-serif;
     }
@@ -47,17 +47,39 @@
     #sheet-info .label { color: var(--text-2); }
     #sheet-info .value { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
 
-    select {
+    select, input {
       width: 100%; padding: 5px;
       border: 1px solid var(--border); border-radius: 3px;
       background: #fff; color: var(--text); font-size: 13px;
     }
+    input:focus, select:focus {
+      border-color: var(--primary);
+      outline: 1px solid var(--primary);
+    }
+    .field-label {
+      display: block; margin: 5px 0 3px;
+      color: var(--text-2); font-size: 11px;
+    }
+    .inline-row {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px;
+    }
+    button.secondary {
+      padding: 5px 9px;
+      border: 1px solid var(--border); border-radius: 3px;
+      background: #fff; color: var(--primary); font-size: 12px; cursor: pointer;
+    }
+    button.secondary:disabled { color: #94a3b8; cursor: not-allowed; }
     button.primary {
       width: 100%; padding: 8px;
       border: 0; border-radius: 4px;
       background: var(--primary); color: #fff; font-size: 13px; cursor: pointer;
     }
     button.primary:disabled { background: #94a3b8; cursor: not-allowed; }
+    details.section > summary {
+      color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    details.section > summary span { float: right; font-weight: 400; }
+    details.section[open] > summary { margin-bottom: 6px; }
 
     #source-headers {
       display: flex; flex-wrap: wrap; gap: 4px;
@@ -135,6 +157,19 @@
     <div id="sheet-info" class="dim">正在读取工作表信息...</div>
   </section>
 
+  <!-- 登录模块暂缓，先通过平台地址和访问令牌完成接口连接 -->
+  <details class="section" id="connection-panel" open>
+    <summary>平台连接 <span id="connection-status" class="dim">未连接</span></summary>
+    <label class="field-label" for="api-base">平台地址</label>
+    <input id="api-base" type="url" autocomplete="off" />
+    <label class="field-label" for="api-token">访问令牌</label>
+    <input id="api-token" type="password" autocomplete="off" placeholder="粘贴 Authorization 中的令牌" />
+    <div id="connection-hint" class="action-hint">令牌只保存在当前 WPS 本地</div>
+    <div style="margin-top:6px">
+      <button class="secondary" id="btn-save-connection" type="button">保存连接</button>
+    </div>
+  </details>
+
   <!-- 源表头 -->
   <section class="section">
     <h2>源表头 <span id="header-count" class="dim"></span></h2>
@@ -146,6 +181,18 @@
     <h2>BOM 模板 <span id="env-tag" class="dim"></span></h2>
     <select id="tpl-select" aria-label="选择 BOM 模板"></select>
     <div id="tpl-hint" class="dim" style="margin-top:4px;font-size:11px"></div>
+  </section>
+
+  <!-- 目标模具：先按编号或名称查询，再选择这一批零件要导入的模具 -->
+  <section class="section">
+    <h2>目标模具</h2>
+    <div class="inline-row">
+      <input id="mold-keyword" type="text" autocomplete="off" placeholder="模具编号或名称" />
+      <button class="secondary" id="btn-search-mold" type="button">查询</button>
+    </div>
+    <select id="mold-select" style="margin-top:5px" aria-label="选择目标模具" disabled>
+      <option value="">请先查询模具</option>
+    </select>
   </section>
 
   <!-- 自动表头匹配结果 -->
@@ -161,10 +208,10 @@
     <div id="preview-panel" class="dim">正在读取数据...</div>
   </section>
 
-  <!-- 上传接口尚未接入，第一步只保留入口 -->
+  <!-- 当前步骤只验证目标模具，一键上传在后续步骤接入 -->
   <section class="section">
     <button class="primary" id="btn-one-click" disabled>一键导入 BOM</button>
-    <div id="import-hint" class="action-hint">上传接口将在下一步接入</div>
+    <div id="import-hint" class="action-hint">请先选择模板和目标模具</div>
   </section>
 
   <div id="toast"></div>
@@ -172,6 +219,7 @@
   <script src="js/ribbon.js"></script>
   <script src="js/core.js"></script>
   <script src="js/adapter.js"></script>
+  <script src="js/api.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>
 </body>

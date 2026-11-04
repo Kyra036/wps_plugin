@@ -1,4 +1,4 @@
-// 任务窗格：只读当前 BOM 工作表，自动匹配表头并预览数据。
+// 任务窗格：读取当前 BOM 工作表，匹配字段，并选择本次导入的目标模具。
 (function (root) {
   "use strict";
 
@@ -14,6 +14,9 @@
     previewRows: [],
     totalDataRows: 0,
     previewRequestId: 0,
+    molds: [],
+    selectedMoldId: "",
+    connection: { baseUrl: "", token: "" },
     busy: false,
   };
 
@@ -36,9 +39,15 @@
     toastTimer = setTimeout(() => element.classList.remove("show"), 2500);
   }
 
+  // 错误区同时支持单条消息和多条行级校验错误。
   function showError(message) {
     const box = $("error-summary");
-    box.textContent = message;
+    const messages = Array.isArray(message) ? message : [message];
+    if (messages.length > 1) {
+      box.innerHTML = `<ul>${messages.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>`;
+    } else {
+      box.textContent = messages[0] || "发生未知错误";
+    }
     box.classList.remove("hidden");
     box.focus();
   }
@@ -53,6 +62,10 @@
     return UI.templates.find((template) => template.id === UI.currentTemplateId) || null;
   }
 
+  function selectedMold() {
+    return UI.molds.find((mold) => String(mold.moldId) === String(UI.selectedMoldId)) || null;
+  }
+
   function formatValue(value) {
     if (value instanceof Date) {
       return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 10);
@@ -60,7 +73,7 @@
     return value === null || value === undefined ? "" : String(value);
   }
 
-  // 读取当前活动 Sheet 的元信息。
+  // 读取当前活动 Sheet 的范围信息，帮助用户确认没有读错工作表。
   function renderSheetInfo() {
     const element = $("sheet-info");
     try {
@@ -113,7 +126,7 @@
     });
   }
 
-  // 模板选择只保留当前内置 BOM 模板，不再提供自定义模板管理。
+  // 模板选择只保留当前内置 BOM 模板，默认为“请选择模板”。
   function renderTemplateBar() {
     const select = $("tpl-select");
     const placeholder = '<option value="" disabled' +
@@ -131,7 +144,7 @@
       : "选择模板后开始自动匹配";
   }
 
-  // 自动匹配结果只读展示；下一阶段再增加手工选择目标字段。
+  // 自动匹配结果只读展示，真正上传时按这组匹配关系生成平台文件。
   function renderMapping() {
     const section = $("mapping-section");
     const list = $("mapping-list");
@@ -222,7 +235,8 @@
 
     const summary = document.createElement("div");
     summary.className = "preview-summary";
-    summary.textContent = `文本 ${typeCounts.text} · 数字 ${typeCounts.number} · 日期 ${typeCounts.date} · 空值 ${typeCounts.empty}`;
+    summary.textContent =
+      `文本 ${typeCounts.text} · 数字 ${typeCounts.number} · 日期 ${typeCounts.date} · 空值 ${typeCounts.empty}`;
     panel.appendChild(summary);
 
     const table = document.createElement("table");
@@ -265,26 +279,89 @@
     panel.appendChild(table);
   }
 
-  // 当前阶段只保留上传入口，真实接口将在下一阶段接入。
+  // 首次打开若已有令牌，自动收起连接区，让主流程保持简洁。
+  function renderConnection() {
+    const config = BomApi.loadConfig();
+    UI.connection = config;
+    $("api-base").value = config.baseUrl;
+    $("api-token").value = config.token;
+    const connected = !!config.token;
+    $("connection-status").textContent = connected ? "已配置" : "未连接";
+    $("connection-hint").textContent = connected
+      ? "平台连接已保存在当前 WPS 本地"
+      : "令牌只保存在当前 WPS 本地";
+    if (connected) $("connection-panel").open = false;
+  }
+
+  function saveConnection() {
+    const config = BomApi.saveConfig({
+      baseUrl: $("api-base").value,
+      token: $("api-token").value,
+    });
+    UI.connection = config;
+    $("api-base").value = config.baseUrl;
+    $("api-token").value = config.token;
+    $("connection-status").textContent = config.token ? "已配置" : "未连接";
+    $("connection-panel").open = !config.token;
+    clearErrors();
+    toast(config.token ? "平台连接已保存" : "请填写访问令牌");
+    renderImportState();
+  }
+
+  function renderMoldOptions() {
+    const select = $("mold-select");
+    select.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = UI.molds.length ? "请选择目标模具" : "没有匹配的模具";
+    select.appendChild(placeholder);
+
+    UI.molds.forEach((mold) => {
+      const option = document.createElement("option");
+      option.value = String(mold.moldId);
+      option.textContent = [mold.moldNo, mold.moldName]
+        .filter((value) => value !== undefined && value !== null && String(value).trim())
+        .join(" / ");
+      select.appendChild(option);
+    });
+    select.disabled = UI.molds.length === 0 || UI.busy;
+    select.value = UI.selectedMoldId;
+  }
+
+  // 当前步骤只验证连接和目标模具选择，上传入口留到下一步接入。
   function renderImportState() {
     const button = $("btn-one-click");
-    const hasTemplate = !!currentTemplate();
+    const hint = $("import-hint");
+    const template = currentTemplate();
+    const mapping = template
+      ? Core.autoMatchHeaders(UI.headerInfo ? UI.headerInfo.headers : [], UI.fields)
+      : null;
+    const missingFields = mapping ? mapping.unmatchedTemplateFields.length : UI.fields.length;
+    const mold = selectedMold();
+
+    let message = "";
+    if (!template) message = "请先选择 BOM 模板";
+    else if (missingFields > 0) message = `仍有 ${missingFields} 个 BOM 字段没有源列`;
+    else if (!UI.connection.token) message = "请先填写并保存平台访问令牌";
+    else if (!mold) message = "请先查询并选择目标模具";
+    else message = `已选择目标模具：${mold.moldNo || mold.moldName || "未命名模具"}`;
+
     button.disabled = true;
-    $("import-hint").textContent = hasTemplate
-      ? "BOM 字段已匹配，上传接口将在下一步接入"
-      : "请先选择 BOM 模板";
+    button.textContent = "一键导入 BOM";
+    hint.textContent = message;
   }
 
   function renderAll() {
     renderSheetInfo();
     renderSourceHeaders();
     renderTemplateBar();
+    renderMoldOptions();
     renderMapping();
     renderPreview();
     renderImportState();
   }
 
-  // 从适配器读取表头和前 20 行，浏览器和 WPS 使用同一套展示逻辑。
+  // 从适配器读取表头和前 20 行，浏览器和 WPS 共用同一套展示逻辑。
   async function loadPreviewData() {
     const requestId = ++UI.previewRequestId;
     try {
@@ -313,8 +390,49 @@
     if (!template) return;
     UI.currentTemplateId = template.id;
     UI.fields = Core.flattenTemplate(template);
+    clearErrors();
     renderAll();
     toast("已加载 BOM 模板");
+  }
+
+  // 查询模具时把按钮暂时置为忙碌，避免用户连续点击造成重复请求。
+  async function searchMolds() {
+    const keyword = $("mold-keyword").value.trim();
+    if (!UI.connection.token) {
+      $("connection-panel").open = true;
+      showError("请先填写并保存平台访问令牌");
+      return;
+    }
+
+    const button = $("btn-search-mold");
+    UI.busy = true;
+    UI.selectedMoldId = "";
+    button.disabled = true;
+    button.textContent = "查询中";
+    $("mold-select").disabled = true;
+    clearErrors();
+    renderImportState();
+    try {
+      UI.molds = await BomApi.searchMolds(keyword);
+      if (UI.molds.length === 1) UI.selectedMoldId = String(UI.molds[0].moldId);
+      renderMoldOptions();
+      if (UI.molds.length === 0) {
+        showError("没有找到匹配的模具，请检查模具编号或名称");
+      } else if (UI.molds.length === 1) {
+        toast("已选择唯一匹配的模具");
+      } else {
+        toast(`找到 ${UI.molds.length} 个模具，请选择`);
+      }
+    } catch (error) {
+      UI.molds = [];
+      renderMoldOptions();
+      showError(error.message);
+    } finally {
+      UI.busy = false;
+      button.disabled = false;
+      button.textContent = "查询";
+      renderAll();
+    }
   }
 
   function init(templates, adapter) {
@@ -324,15 +442,21 @@
     $("tpl-select").addEventListener("change", (event) => {
       if (event.target.value) activateTemplate(event.target.value);
     });
-    $("btn-one-click").addEventListener("click", () => {
-      toast("上传接口将在下一步接入");
+    $("btn-save-connection").addEventListener("click", saveConnection);
+    $("btn-search-mold").addEventListener("click", searchMolds);
+    $("mold-keyword").addEventListener("keydown", (event) => {
+      if (event.key === "Enter") searchMolds();
     });
-
+    $("mold-select").addEventListener("change", (event) => {
+      UI.selectedMoldId = event.target.value;
+      renderImportState();
+    });
     if (adapter.onDataChange) {
       adapter.onDataChange(() => loadPreviewData());
     }
 
     $("env-tag").textContent = adapter.isMock ? "浏览器 Mock 模式" : "WPS 环境";
+    renderConnection();
     renderTemplateBar();
     loadPreviewData();
   }
