@@ -113,9 +113,47 @@
     select.value = UI.currentTemplateId || "";
     select.disabled = UI.busy || !!UI.drag;
     $("tpl-hint").textContent = UI.currentTemplateId
-      ? "模板已加载，源工作表不会被修改"
+      ? "模板已从内置模板库加载，源工作表不会被修改"
       : "选择 BOM 模板后开始匹配源表头";
+    renderCurrentTemplate();
     renderTemplateGroups();
+  }
+
+  // 展示当前模板的来源、版本和有效字段数量，帮助确认选中的是哪套配置。
+  function renderCurrentTemplate() {
+    const box = $("current-template");
+    const template = currentTemplate();
+    box.innerHTML = "";
+    if (!template) {
+      box.className = "hidden";
+      return;
+    }
+
+    const visibleGroups = Array.isArray(template.groups)
+      ? template.groups.filter((group) => group.visible !== false)
+      : [];
+    const fields = Core.flattenTemplate(template);
+    const source = template.builtIn === true ? "内置模板" : "自定义模板";
+    const version = Number.isFinite(Number(template.version)) ? Number(template.version) : 1;
+
+    const head = document.createElement("div");
+    head.className = "template-current-head";
+    const label = document.createElement("span");
+    label.className = "dim";
+    label.textContent = "当前模板";
+    const name = document.createElement("strong");
+    name.textContent = template.name || template.id;
+    const badge = document.createElement("span");
+    badge.className = "template-badge";
+    badge.textContent = source;
+    head.append(label, name, badge);
+
+    const meta = document.createElement("div");
+    meta.id = "template-meta";
+    meta.textContent = `版本 ${version} · ${visibleGroups.length} 个分组 · ${fields.length} 个字段`;
+
+    box.className = "";
+    box.append(head, meta);
   }
 
   function renderTemplateGroups() {

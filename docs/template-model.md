@@ -1,7 +1,22 @@
 # BOM 模板数据结构
 
-`data/mock.json` 必须保持合法 JSON，因此不能在文件内写 `//` 注释。
-本文件用于说明当前模板字段的含义。
+模板定义位于 `data/templates.json`，示例工作表位于 `data/mock.json`。
+两个文件都必须保持合法 JSON，因此不能在文件内写 `//` 注释。
+本文件用于说明模板库和字段结构的含义。
+
+## 模板库
+
+```json
+{
+  "version": "1.0",
+  "defaultTemplateId": "tpl_bom_standard_v1",
+  "templates": []
+}
+```
+
+- `defaultTemplateId`：推荐的内置模板标识。
+- 页面当前不会自动选中该模板，用户仍从“请选择模板”开始操作。
+- `templates`：内置模板列表，后续可替换为服务端模板接口。
 
 ## 模板
 

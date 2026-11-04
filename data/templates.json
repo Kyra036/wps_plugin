@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "defaultTemplateId": "tpl_bom_standard_v1",
+  "templates": [
+    {
+      "id": "tpl_bom_standard_v1",
+      "name": "BOM 标准模板（示例）",
+      "description": "内置 BOM 模板，覆盖产品定义、物料清单和工艺路线。",
+      "builtIn": true,
+      "version": 1,
+      "groups": [
+        {
+          "key": "product",
+          "label": "产品定义",
+          "visible": true,
+          "builtIn": true,
+          "fields": [
+            { "key": "levelNo", "label": "层级编号", "visible": true, "builtIn": true, "aliases": ["层级", "层级号"] },
+            { "key": "productCode", "label": "产品编号", "visible": true, "builtIn": true, "aliases": ["物料编码", "料号"] },
+            { "key": "productName", "label": "产品名称", "visible": true, "builtIn": true, "aliases": ["物料名称", "品名"] },
+            { "key": "productSpec", "label": "产品规格", "visible": true, "builtIn": true, "aliases": ["规格", "规格型号"] },
+            { "key": "productAttribute", "label": "产品属性", "visible": true, "builtIn": true, "aliases": ["属性"] },
+            { "key": "unit", "label": "单位", "visible": true, "builtIn": true, "aliases": ["计量单位", "基本单位"] },
+            { "key": "keyPart", "label": "关键部件", "visible": true, "builtIn": true, "aliases": ["关键件"] }
+          ]
+        },
+        {
+          "key": "bom",
+          "label": "物料清单",
+          "visible": true,
+          "builtIn": true,
+          "fields": [
+            { "key": "manufacturingMode", "label": "制造模式", "visible": true, "builtIn": true, "aliases": ["生产模式"] },
+            { "key": "feedProcess", "label": "投料工序", "visible": true, "builtIn": true, "aliases": ["投料"] },
+            { "key": "parentBase", "label": "父项基数", "visible": true, "builtIn": true, "aliases": ["父件基数"] },
+            { "key": "unitUsage", "label": "单位用量", "visible": true, "builtIn": true, "aliases": ["用量", "数量"] },
+            { "key": "lossRate", "label": "损耗率%", "visible": true, "builtIn": true, "aliases": ["损耗率", "损耗"] },
+            { "key": "remark", "label": "备注", "visible": true, "builtIn": true, "aliases": ["说明"] }
+          ]
+        },
+        {
+          "key": "route",
+          "label": "工艺路线",
+          "visible": true,
+          "builtIn": true,
+          "fields": [
+            { "key": "routeName", "label": "工艺路线名称", "visible": true, "builtIn": true, "aliases": ["工艺路线", "路线名称"] },
+            { "key": "processList", "label": "工序列表", "visible": true, "builtIn": true, "aliases": ["工序", "工序清单"] }
+          ]
+        }
+      ]
+    }
+  ]
+}

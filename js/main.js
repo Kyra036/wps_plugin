@@ -1,4 +1,4 @@
-// 启动装配：加载 mock 模板与模拟工作表，探测运行环境，初始化任务窗格。
+// 启动装配：加载内置模板库和 Mock 工作表，探测运行环境后初始化任务窗格。
 (function () {
   "use strict";
 
@@ -6,31 +6,44 @@
     return typeof window.wps !== "undefined" && typeof window.wps.EtApplication === "function";
   }
 
+  // 所有静态数据都通过 HTTP 加载，避免 file:// 环境下 fetch 被浏览器拦截。
+  async function loadJson(path) {
+    const res = await fetch(path);
+    if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+    return res.json();
+  }
+
   async function boot() {
+    const wpsMode = isWpsEnv();
+    let templateLibrary;
     let mock;
     try {
-      const res = await fetch("data/mock.json");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      mock = await res.json();
+      // 模板库与示例 Sheet 分离；真实 WPS 环境不需要加载 Mock 工作表。
+      [templateLibrary, mock] = await Promise.all([
+        loadJson("data/templates.json"),
+        wpsMode ? Promise.resolve(null) : loadJson("data/mock.json"),
+      ]);
     } catch (err) {
       const box = document.getElementById("error-summary");
       box.classList.remove("hidden");
       box.textContent =
-        `加载 data/mock.json 失败：${err.message}（请通过 http 服务访问页面，而不是 file:// 直接打开）`;
+        `加载模板库或示例工作表失败：${err.message}（请通过 HTTP 服务访问页面）`;
       return;
     }
 
-    const templates = Array.isArray(mock.templates) ? mock.templates : [];
+    const templates = templateLibrary && Array.isArray(templateLibrary.templates)
+      ? templateLibrary.templates
+      : [];
     if (templates.length === 0) {
       const box = document.getElementById("error-summary");
       box.classList.remove("hidden");
-      box.textContent = "data/mock.json 中没有可用模板（templates 为空）";
+      box.textContent = "data/templates.json 中没有可用模板（templates 为空）";
       return;
     }
 
-    const adapter = isWpsEnv()
+    const adapter = wpsMode
       ? new Adapters.WpsAdapter()
-      : new Adapters.MockAdapter(mock.mockSheet || { name: "Sheet1", rows: [] });
+      : new Adapters.MockAdapter((mock && mock.mockSheet) || { name: "Sheet1", rows: [] });
     UI.init(templates, adapter);
   }
 
