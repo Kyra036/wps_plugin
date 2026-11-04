@@ -16,7 +16,9 @@
     previewRequestId: 0,
     molds: [],
     selectedMoldId: "",
-    connection: { baseUrl: "", token: "" },
+    existingPartCount: null,
+    partCountLoading: false,
+    partCountRequestId: 0,
     busy: false,
   };
 
@@ -279,35 +281,6 @@
     panel.appendChild(table);
   }
 
-  // 首次打开若已有令牌，自动收起连接区，让主流程保持简洁。
-  function renderConnection() {
-    const config = BomApi.loadConfig();
-    UI.connection = config;
-    $("api-base").value = config.baseUrl;
-    $("api-token").value = config.token;
-    const connected = !!config.token;
-    $("connection-status").textContent = connected ? "已配置" : "未连接";
-    $("connection-hint").textContent = connected
-      ? "平台连接已保存在当前 WPS 本地"
-      : "令牌只保存在当前 WPS 本地";
-    if (connected) $("connection-panel").open = false;
-  }
-
-  function saveConnection() {
-    const config = BomApi.saveConfig({
-      baseUrl: $("api-base").value,
-      token: $("api-token").value,
-    });
-    UI.connection = config;
-    $("api-base").value = config.baseUrl;
-    $("api-token").value = config.token;
-    $("connection-status").textContent = config.token ? "已配置" : "未连接";
-    $("connection-panel").open = !config.token;
-    clearErrors();
-    toast(config.token ? "平台连接已保存" : "请填写访问令牌");
-    renderImportState();
-  }
-
   function renderMoldOptions() {
     const select = $("mold-select");
     select.innerHTML = "";
@@ -328,6 +301,59 @@
     select.value = UI.selectedMoldId;
   }
 
+  // 目标模具下方只展示零件总数；读取失败时显示错误，不影响当前工作表预览。
+  function renderMoldPartStatus() {
+    const element = $("mold-part-status");
+    const mold = selectedMold();
+    if (!mold) {
+      element.textContent = "选择模具后读取已有零件数量";
+      return;
+    }
+    if (UI.partCountLoading) {
+      element.textContent = "正在读取目标模具已有零件数量...";
+      return;
+    }
+    if (UI.existingPartCount !== null) {
+      element.textContent = `目标模具已有 ${UI.existingPartCount} 个零件`;
+      return;
+    }
+    element.textContent = "尚未读取已有零件数量";
+  }
+
+  // 只调用查询接口获取 total，本函数不包含新增、更新或删除操作。
+  async function loadExistingPartCount(moldId) {
+    const requestId = ++UI.partCountRequestId;
+    UI.partCountLoading = true;
+    UI.existingPartCount = null;
+    renderMoldPartStatus();
+    try {
+      const count = await BomApi.countParts(moldId);
+      if (requestId !== UI.partCountRequestId) return;
+      UI.existingPartCount = count;
+    } catch (error) {
+      if (requestId !== UI.partCountRequestId) return;
+      showError(`读取已有零件数量失败：${error.message}`);
+    } finally {
+      if (requestId === UI.partCountRequestId) {
+        UI.partCountLoading = false;
+        renderMoldPartStatus();
+        renderImportState();
+      }
+    }
+  }
+
+  // 所有选择模具的入口都走这里，确保加载状态和请求序号同时更新。
+  function selectMold(moldId) {
+    UI.selectedMoldId = moldId || "";
+    UI.existingPartCount = null;
+    UI.partCountLoading = false;
+    UI.partCountRequestId += 1;
+    renderMoldOptions();
+    renderMoldPartStatus();
+    renderImportState();
+    if (UI.selectedMoldId) loadExistingPartCount(UI.selectedMoldId);
+  }
+
   // 当前步骤只验证连接和目标模具选择，上传入口留到下一步接入。
   function renderImportState() {
     const button = $("btn-one-click");
@@ -342,8 +368,11 @@
     let message = "";
     if (!template) message = "请先选择 BOM 模板";
     else if (missingFields > 0) message = `仍有 ${missingFields} 个 BOM 字段没有源列`;
-    else if (!UI.connection.token) message = "请先填写并保存平台访问令牌";
     else if (!mold) message = "请先查询并选择目标模具";
+    else if (UI.partCountLoading) message = "正在读取目标模具已有零件数量...";
+    else if (UI.existingPartCount !== null) {
+      message = `已选择目标模具：${mold.moldNo || mold.moldName || "未命名模具"}，已有 ${UI.existingPartCount} 个零件`;
+    }
     else message = `已选择目标模具：${mold.moldNo || mold.moldName || "未命名模具"}`;
 
     button.disabled = true;
@@ -356,6 +385,7 @@
     renderSourceHeaders();
     renderTemplateBar();
     renderMoldOptions();
+    renderMoldPartStatus();
     renderMapping();
     renderPreview();
     renderImportState();
@@ -398,15 +428,13 @@
   // 查询模具时把按钮暂时置为忙碌，避免用户连续点击造成重复请求。
   async function searchMolds() {
     const keyword = $("mold-keyword").value.trim();
-    if (!UI.connection.token) {
-      $("connection-panel").open = true;
-      showError("请先填写并保存平台访问令牌");
-      return;
-    }
-
     const button = $("btn-search-mold");
+    let autoSelectMoldId = "";
     UI.busy = true;
     UI.selectedMoldId = "";
+    UI.existingPartCount = null;
+    UI.partCountLoading = false;
+    UI.partCountRequestId += 1;
     button.disabled = true;
     button.textContent = "查询中";
     $("mold-select").disabled = true;
@@ -414,7 +442,7 @@
     renderImportState();
     try {
       UI.molds = await BomApi.searchMolds(keyword);
-      if (UI.molds.length === 1) UI.selectedMoldId = String(UI.molds[0].moldId);
+      if (UI.molds.length === 1) autoSelectMoldId = String(UI.molds[0].moldId);
       renderMoldOptions();
       if (UI.molds.length === 0) {
         showError("没有找到匹配的模具，请检查模具编号或名称");
@@ -433,6 +461,7 @@
       button.textContent = "查询";
       renderAll();
     }
+    if (autoSelectMoldId) selectMold(autoSelectMoldId);
   }
 
   function init(templates, adapter) {
@@ -442,21 +471,20 @@
     $("tpl-select").addEventListener("change", (event) => {
       if (event.target.value) activateTemplate(event.target.value);
     });
-    $("btn-save-connection").addEventListener("click", saveConnection);
     $("btn-search-mold").addEventListener("click", searchMolds);
     $("mold-keyword").addEventListener("keydown", (event) => {
       if (event.key === "Enter") searchMolds();
     });
     $("mold-select").addEventListener("change", (event) => {
-      UI.selectedMoldId = event.target.value;
-      renderImportState();
+      selectMold(event.target.value);
     });
     if (adapter.onDataChange) {
       adapter.onDataChange(() => loadPreviewData());
     }
 
-    $("env-tag").textContent = adapter.isMock ? "浏览器 Mock 模式" : "WPS 环境";
-    renderConnection();
+    $("env-tag").textContent = BomApi.isDemoMode()
+      ? (adapter.isMock ? "浏览器 Mock + 演示数据" : "演示数据模式")
+      : (adapter.isMock ? "浏览器 Mock 模式" : "WPS 环境");
     renderTemplateBar();
     loadPreviewData();
   }
