@@ -45,6 +45,7 @@
           labelPath,
           groupLabels: labelPath.slice(0, -1),
           visible,
+          builtIn: field.builtIn !== false,
         });
       }
     }
@@ -70,8 +71,10 @@
         true
       ));
     }
-    sourceLeaves.forEach((leaf, index) => {
-      leaf.sourceIndex = index;
+    let sourceIndex = 0;
+    sourceLeaves.forEach((leaf) => {
+      // 自定义字段尚无对应源列，标记为空；内置字段仍保持原来的源列位置。
+      leaf.sourceIndex = leaf.builtIn ? sourceIndex++ : null;
     });
     return sourceLeaves.filter((leaf) => leaf.visible);
   }
@@ -159,7 +162,7 @@
       const record = {};
       leaves.forEach((leaf, index) => {
         const sourceIndex = Number.isInteger(leaf.sourceIndex) ? leaf.sourceIndex : index;
-        setPath(record, leaf.path, convertCell(row[sourceIndex]));
+        setPath(record, leaf.path, Number.isInteger(leaf.sourceIndex) ? convertCell(row[sourceIndex]) : null);
       });
       return record;
     });
@@ -175,7 +178,7 @@
         path: leaf.path.join("."),
         label: leaf.label,
         // 使用源字段位置，隐藏字段后列字母不会重新压缩。
-        column: colLetter(Number.isInteger(leaf.sourceIndex) ? leaf.sourceIndex : index),
+        column: Number.isInteger(leaf.sourceIndex) ? colLetter(leaf.sourceIndex) : null,
       })),
       records: buildRecords(rows, current),
     };

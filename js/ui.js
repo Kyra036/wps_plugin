@@ -19,6 +19,7 @@
     busy: false,
     lastLabelCount: 0,
     writeChain: Promise.resolve(),
+    editingFieldId: null,
   };
 
   function esc(value) {
@@ -237,7 +238,7 @@
       groupBox.appendChild(summary);
 
       fields.forEach((field, fieldIndex) => {
-        const row = document.createElement("label");
+        const row = document.createElement("div");
         row.className = "config-field";
 
         const toggle = document.createElement("input");
@@ -253,20 +254,80 @@
         state.className = "visibility-state" + (hidden ? " hidden-field" : "");
         state.textContent = hidden ? "隐藏" : "显示";
 
-        const name = document.createElement("span");
-        name.className = "field-name";
-        name.textContent = field.label || field.key;
+        const title = document.createElement("span");
+        title.className = "config-field-title";
+        const fieldId = `${group.key}.${field.key}`;
+        if (field.builtIn === false && UI.editingFieldId === fieldId) {
+          const input = document.createElement("input");
+          input.className = "field-name-input";
+          input.value = field.label || field.key;
+          input.setAttribute("aria-label", "自定义字段名称");
+          let cancelled = false;
+          input.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter") input.blur();
+            if (ev.key === "Escape") {
+              cancelled = true;
+              UI.editingFieldId = null;
+              renderTemplateConfig();
+            }
+          });
+          input.addEventListener("blur", () => {
+            if (!cancelled) commitCustomFieldRename(groupIndex, fieldIndex, input.value);
+          });
+          title.appendChild(input);
+          requestAnimationFrame(() => input.focus());
+        } else {
+          const name = document.createElement("span");
+          name.className = "field-name";
+          name.textContent = field.label || field.key;
+          title.appendChild(name);
+          if (field.builtIn === false) {
+            const tag = document.createElement("span");
+            tag.className = "custom-tag";
+            tag.textContent = "自定义";
+            title.appendChild(tag);
+          }
+        }
 
         const key = document.createElement("span");
         key.className = "field-key";
         key.textContent = `${group.key}.${field.key}`;
 
-        row.append(toggle, name, state, key);
+        row.append(toggle, title, state, key);
+        if (field.builtIn === false) {
+          const actions = document.createElement("span");
+          actions.className = "custom-field-actions";
+          const rename = document.createElement("button");
+          rename.type = "button";
+          rename.textContent = "重命名";
+          rename.addEventListener("click", () => beginCustomFieldRename(fieldId));
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.className = "danger";
+          remove.textContent = "删除";
+          remove.addEventListener("click", () => deleteCustomField(groupIndex, fieldIndex));
+          actions.append(rename, remove);
+          row.appendChild(actions);
+        }
         groupBox.appendChild(row);
       });
 
+      const addButton = document.createElement("button");
+      addButton.type = "button";
+      addButton.className = "add-custom-field";
+      addButton.textContent = "+ 添加自定义字段";
+      addButton.disabled = group.visible === false;
+      addButton.addEventListener("click", () => addCustomField(groupIndex));
+      groupBox.appendChild(addButton);
       list.appendChild(groupBox);
     });
+  }
+
+  // 显隐、添加、改名和删除都会改变有效字段集合，因此统一重建列表和顺序。
+  function refreshTemplateFields(template) {
+    UI.fields = Core.flattenTemplate(template);
+    UI.order = Core.normalizeOrder(UI.orders[template.id], UI.fields);
+    if (UI.result) UI.stale = true;
   }
 
   // 字段显隐是当前会话配置；P12 才会把调整保存为“我的模板”。
@@ -286,11 +347,81 @@
     }
 
     field.visible = visible;
-    UI.fields = Core.flattenTemplate(template);
-    UI.order = Core.normalizeOrder(UI.orders[template.id], UI.fields);
-    if (UI.result) UI.stale = true;
+    refreshTemplateFields(template);
     renderAll();
     toast(`${field.label || field.key}已${visible ? "显示" : "隐藏"}`);
+  }
+
+  // 自定义字段使用独立 key；只改显示名称不会影响字段身份。
+  function addCustomField(groupIndex) {
+    const template = currentTemplate();
+    const group = template && template.groups && template.groups[groupIndex];
+    if (!group || group.visible === false) return;
+
+    const keys = new Set(
+      template.groups.flatMap((item) => (item.fields || []).map((field) => field.key))
+    );
+    let number = 1;
+    while (keys.has(`custom${number}`)) number++;
+    const field = {
+      key: `custom${number}`,
+      label: `自定义字段${number}`,
+      visible: true,
+      builtIn: false,
+      aliases: [],
+    };
+    group.fields = Array.isArray(group.fields) ? group.fields : [];
+    group.fields.push(field);
+    UI.editingFieldId = `${group.key}.${field.key}`;
+    refreshTemplateFields(template);
+    renderAll();
+    toast(`已添加${field.label}`);
+  }
+
+  function beginCustomFieldRename(fieldId) {
+    UI.editingFieldId = fieldId;
+    renderTemplateConfig();
+  }
+
+  function commitCustomFieldRename(groupIndex, fieldIndex, value) {
+    const template = currentTemplate();
+    const field = template && template.groups && template.groups[groupIndex] &&
+      template.groups[groupIndex].fields && template.groups[groupIndex].fields[fieldIndex];
+    if (!field || field.builtIn !== false) return;
+
+    const label = String(value || "").trim();
+    UI.editingFieldId = null;
+    if (!label) {
+      renderTemplateConfig();
+      toast("自定义字段名称不能为空");
+      return;
+    }
+    field.label = label;
+    refreshTemplateFields(template);
+    renderAll();
+    toast("字段名称已更新");
+  }
+
+  function deleteCustomField(groupIndex, fieldIndex) {
+    const template = currentTemplate();
+    const group = template && template.groups && template.groups[groupIndex];
+    const field = group && group.fields && group.fields[fieldIndex];
+    if (!field || field.builtIn !== false) return;
+
+    const visibleCount = template.groups
+      .flatMap((item) => item.fields || [])
+      .filter((item) => item.visible !== false).length;
+    if (field.visible !== false && visibleCount <= 1) {
+      toast("至少保留一个可见字段");
+      return;
+    }
+    if (!window.confirm(`确定删除自定义字段“${field.label || field.key}”吗？`)) return;
+
+    group.fields.splice(fieldIndex, 1);
+    UI.editingFieldId = null;
+    refreshTemplateFields(template);
+    renderAll();
+    toast("自定义字段已删除");
   }
 
   // ---------- 渲染：字段列表 ----------
@@ -328,6 +459,9 @@
       row.dataset.index = String(index);
       row.title = field.path.join(".");
       const group = field.groupLabels.length ? field.groupLabels.join(" / ") : "";
+      const sourceColumn = Number.isInteger(field.sourceIndex)
+        ? Core.colLetter(field.sourceIndex)
+        : "新";
       row.innerHTML =
         `<span class="handle" aria-hidden="true">≡</span>` +
         `<div class="field-body">` +
@@ -335,7 +469,7 @@
         (group ? `  <div class="field-path">${esc(group)}</div>` : "") +
         `</div>` +
         // 隐藏字段后仍显示字段真实对应的源列字母，不能按当前可见序号重新编号。
-        `<span class="field-col">${Core.colLetter(field.sourceIndex ?? index)}</span>`;
+        `<span class="field-col">${sourceColumn}</span>`;
 
       row.addEventListener("dragstart", (ev) => onDragStart(ev, index));
       row.addEventListener("dragover", (ev) => onDragOver(ev, index));
@@ -344,7 +478,7 @@
       row.addEventListener("mouseenter", async () => {
         row.classList.add("hover");
         // 高亮使用源列位置，避免隐藏字段后悬停到错误的列。
-        await UI.adapter.highlightColumn(field.sourceIndex ?? index);
+        await UI.adapter.highlightColumn(Number.isInteger(field.sourceIndex) ? field.sourceIndex : null);
         renderSheetPanel();
       });
       row.addEventListener("mouseleave", async () => {
@@ -360,14 +494,17 @@
 
   function updateControls() {
     const hasTemplate = !!currentTemplate();
-    const canUpload = hasTemplate && UI.fields.length > 0 && !UI.busy && !UI.drag;
+    const hasUnmappedField = UI.fields.some((field) => field.builtIn === false);
+    const canUpload = hasTemplate && UI.fields.length > 0 && !hasUnmappedField && !UI.busy && !UI.drag;
     $("btn-upload").disabled = !canUpload;
     $("tpl-select").disabled = UI.busy || !!UI.drag;
     // 拖拽或上传期间禁止清空模板，避免界面状态与进行中的操作冲突。
     $("btn-clear-template").disabled = UI.busy || !!UI.drag;
-    $("upload-hint").textContent = hasTemplate
-      ? "上传会按当前字段顺序读取源表头下方的数据，不修改工作表"
-      : "选择模板后即可拖动排序并上传";
+    $("upload-hint").textContent = !hasTemplate
+      ? "选择模板后即可拖动排序并上传"
+      : hasUnmappedField
+        ? "存在尚未映射的自定义字段，请先删除或完成后续映射配置"
+        : "上传会按当前字段顺序读取源表头下方的数据，不修改工作表";
   }
 
   // ---------- 拖动排序：每次位置变化写一次表头预览 ----------

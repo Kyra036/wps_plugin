@@ -153,10 +153,32 @@
     .config-field .field-name {
       min-width: 0; font-size: 12px; overflow-wrap: anywhere;
     }
+    .config-field-title {
+      min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+    }
+    .field-name-input {
+      width: 100%; min-width: 0; padding: 2px 4px;
+      border: 1px solid var(--primary); border-radius: 3px;
+      color: var(--text); font-size: 12px;
+    }
+    .custom-tag {
+      padding: 1px 4px; border-radius: 3px;
+      background: #fef3c7; color: #92400e; font-size: 9px;
+    }
     .config-field .field-key {
       grid-column: 2 / 4; color: var(--text-2);
       font-family: Consolas, monospace; font-size: 10px;
     }
+    .custom-field-actions {
+      grid-column: 2 / 4; display: flex; gap: 8px;
+    }
+    .custom-field-actions button,
+    .add-custom-field {
+      padding: 1px 4px; border: 0; background: transparent;
+      color: var(--primary); font-size: 10px; cursor: pointer;
+    }
+    .add-custom-field { margin: 4px 0 2px 24px; }
+    .custom-field-actions button.danger { color: var(--error); }
     .visibility-state {
       padding: 1px 4px; border-radius: 3px; text-align: center;
       background: #eff6ff; color: var(--primary); font-size: 10px;
@@ -250,7 +272,7 @@
     <details id="template-config" class="template-config hidden" open>
       <summary>模板配置</summary>
       <div id="template-config-groups"></div>
-      <div id="template-config-note" class="dim">字段显隐仅在本次会话生效，刷新后恢复模板默认配置。</div>
+      <div id="template-config-note" class="dim">字段调整仅在本次会话生效；存在未映射自定义字段时不能上传。</div>
     </details>
   </div>
 
