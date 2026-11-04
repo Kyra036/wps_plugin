@@ -3,6 +3,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  const PREVIEW_ROW_LIMIT = 20;
 
   const UI = {
     templates: [],
@@ -354,12 +355,17 @@
       return;
     }
     const headers = view.headers || [];
+    const previewRows = view.rows.slice(0, PREVIEW_ROW_LIMIT);
     const colCount = Math.max(
       headers.length,
-      ...view.rows.map((row) => row.length),
+      ...previewRows.map((row) => row.length),
       0
     );
-    let html = `<div class="sheet-name">模拟工作表：${esc(view.name)}（第 1 行源表头）</div>`;
+    const rowSummary = view.rows.length > PREVIEW_ROW_LIMIT
+      ? `显示前 ${PREVIEW_ROW_LIMIT} 行，共 ${view.rows.length} 行`
+      : `显示 ${view.rows.length} 行`;
+    let html = `<div class="sheet-name">模拟工作表：${esc(view.name)}` +
+      `（第 1 行源表头） · ${rowSummary}</div>`;
     html += '<table class="sheet"><tr><th></th>';
     for (let c = 0; c < colCount; c++) {
       html += `<th class="col-letter">${Core.colLetter(c)}</th>`;
@@ -375,7 +381,7 @@
     }
     html += "</tr>";
 
-    view.rows.forEach((row) => {
+    previewRows.forEach((row) => {
       html += `<tr><td class="row-no">${rowNo++}</td>`;
       for (let c = 0; c < colCount; c++) {
         const value = row[c];
