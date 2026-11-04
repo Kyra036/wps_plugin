@@ -53,6 +53,21 @@
       return this.name;
     }
 
+    getSheetInfo() {
+      return {
+        name: this.name,
+        startRow: 1,
+        startColumn: 1,
+        rowCount: 1 + this.rows.length + (this.hasPluginHeader ? 1 : 0),
+        columnCount: Math.max(
+          this.headers.length,
+          this.pluginLabels.length,
+          ...this.rows.map((row) => row.length),
+          0
+        ),
+      };
+    }
+
     async highlightColumn(col) {
       this.highlightCol = col;
     }
@@ -257,6 +272,21 @@
 
     getSheetName() {
       return this._sheet().Name;
+    }
+
+    getSheetInfo() {
+      const sheet = this._sheet();
+      const used = this._usedRange(sheet);
+      if (!used) {
+        return { name: sheet.Name, startRow: 0, startColumn: 0, rowCount: 0, columnCount: 0 };
+      }
+      return {
+        name: sheet.Name,
+        startRow: Number(used.Row) || 1,
+        startColumn: Number(used.Column) || 1,
+        rowCount: Number(used.Rows && used.Rows.Count) || 0,
+        columnCount: Number(used.Columns && used.Columns.Count) || 0,
+      };
     }
 
     async highlightColumn() {

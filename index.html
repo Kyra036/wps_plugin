@@ -87,6 +87,16 @@
 
     #field-empty { padding: 4px 0; }
 
+    #sheet-info {
+      display: grid; grid-template-columns: 64px 1fr;
+      gap: 4px 8px; font-size: 12px;
+    }
+    #sheet-info .label { color: var(--text-2); }
+    #sheet-info .value {
+      color: var(--text); font-weight: 600;
+      overflow-wrap: anywhere;
+    }
+
     #sheet-panel { overflow-x: auto; }
     table.sheet { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 4px; }
     table.sheet th, table.sheet td {
@@ -127,6 +137,11 @@
 </head>
 <body>
   <div id="error-summary" class="hidden" tabindex="-1"></div>
+
+  <div class="section">
+    <h2>当前工作表</h2>
+    <div id="sheet-info" class="dim">正在读取工作表信息...</div>
+  </div>
 
   <div class="section">
     <h2>模板 <span id="env-tag" class="dim" style="font-weight:400"></span></h2>

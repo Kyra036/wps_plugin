@@ -73,7 +73,10 @@
     UI.lastLabelCount = labels.length;
     UI.writeChain = UI.writeChain
       .then(() => UI.adapter.writePluginHeader(labels, previousCount))
-      .then(() => renderSheetPanel())
+      .then(() => {
+        renderSheetInfo();
+        renderSheetPanel();
+      })
       .catch((err) => {
         showErrors([`插件表头写入失败：${err.message}`]);
       });
@@ -106,6 +109,7 @@
           return info;
         })
         .then((info) => {
+          renderSheetInfo();
           renderSheetPanel();
           if (announce) {
             toast(info && info.created ? "已在第 1 行创建插件表头" : "已切换模板，插件表头已更新");
@@ -293,6 +297,41 @@
 
   // ---------- 渲染：模拟工作表预览 ----------
 
+  function renderSheetInfo() {
+    const el = $("sheet-info");
+    if (!el) return;
+    if (!UI.adapter || typeof UI.adapter.getSheetInfo !== "function") {
+      el.textContent = "当前环境不支持读取工作表信息";
+      return;
+    }
+
+    let info;
+    try {
+      info = UI.adapter.getSheetInfo();
+    } catch (err) {
+      el.textContent = `读取工作表信息失败：${err.message}`;
+      return;
+    }
+    if (!info) {
+      el.textContent = "无法读取当前工作表";
+      return;
+    }
+
+    const range = info.rowCount > 0 && info.columnCount > 0
+      ? `${Core.colLetter(info.startColumn - 1)}${info.startRow}:` +
+        `${Core.colLetter(info.startColumn + info.columnCount - 2)}` +
+        `${info.startRow + info.rowCount - 1}`
+      : "空工作表";
+    const size = info.rowCount > 0 && info.columnCount > 0
+      ? `${info.rowCount} 行 × ${info.columnCount} 列`
+      : "无数据";
+
+    el.innerHTML =
+      `<span class="label">Sheet</span><span class="value">${esc(info.name)}</span>` +
+      `<span class="label">使用范围</span><span class="value">${esc(range)}</span>` +
+      `<span class="label">区域大小</span><span class="value">${size}</span>`;
+  }
+
   function renderSheetPanel() {
     const panel = $("sheet-panel");
     const view = UI.adapter.getSheetView ? UI.adapter.getSheetView() : null;
@@ -379,6 +418,7 @@
       const filename = `${safeFileName(UI.adapter.getSheetName())}-${safeFileName(template.name)}.json`;
       await UI.adapter.uploadJson(json, filename);
       toast(`已导出 ${rows.length} 行数据：${filename}`);
+      renderSheetInfo();
       renderSheetPanel();
     } catch (err) {
       showErrors([`上传失败：${err.message}`]);
@@ -428,6 +468,7 @@
   // ---------- 初始化 ----------
 
   function renderAll() {
+    renderSheetInfo();
     renderTemplateBar();
     renderFieldList();
     renderSheetPanel();
@@ -457,6 +498,7 @@
 
     if (adapter.onDataChange) {
       adapter.onDataChange(() => {
+        renderSheetInfo();
         if (UI.result) {
           UI.stale = true;
           renderResult();

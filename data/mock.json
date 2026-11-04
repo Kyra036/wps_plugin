@@ -2,53 +2,44 @@
   "version": "2.0",
   "templates": [
     {
-      "id": "tpl_order_standard",
-      "name": "订单标准模板",
+      "id": "tpl_bom_standard_v1",
+      "name": "BOM 标准模板（示例）",
       "fields": [
-        { "key": "orderNo", "label": "订单编号" },
         {
-          "key": "customer",
-          "label": "客户信息",
+          "key": "parent",
+          "label": "父件信息",
           "children": [
-            { "key": "name", "label": "客户名称" },
-            {
-              "key": "contact",
-              "label": "联系方式",
-              "children": [
-                { "key": "phone", "label": "联系电话" },
-                { "key": "email", "label": "电子邮箱" }
-              ]
-            }
+            { "key": "code", "label": "父件编码" },
+            { "key": "name", "label": "父件名称" }
           ]
         },
-        { "key": "orderDate", "label": "下单日期" },
-        { "key": "amount", "label": "订单金额" },
-        { "key": "status", "label": "订单状态" }
-      ]
-    },
-    {
-      "id": "tpl_order_reconcile",
-      "name": "对账精简模板",
-      "fields": [
-        { "key": "orderNo", "label": "订单编号" },
         {
-          "key": "customer",
-          "label": "客户信息",
-          "children": [{ "key": "name", "label": "客户名称" }]
+          "key": "child",
+          "label": "子件信息",
+          "children": [
+            { "key": "code", "label": "子件编码" },
+            { "key": "name", "label": "物料名称" },
+            { "key": "specification", "label": "规格型号" }
+          ]
         },
-        { "key": "amount", "label": "订单金额" },
-        { "key": "status", "label": "订单状态" }
+        { "key": "quantity", "label": "数量" },
+        { "key": "unit", "label": "单位" },
+        { "key": "remark", "label": "备注" }
       ]
     }
   ],
   "mockSheet": {
-    "name": "订单",
-    "headers": ["订单号", "客户", "联系电话", "电子邮箱", "下单日期", "订单金额", "订单状态"],
+    "name": "BOM",
+    "headers": ["父件编码", "父件名称", "子件编码", "物料名称", "规格型号", "数量", "单位", "备注"],
     "rows": [
-      ["SO001", "张三", "13800000001", "zhangsan@example.com", "2026-10-01", 100.5, "已发货"],
-      ["SO002", "李四", "13800000002", "lisi@example.com", "2026-10-02", 200, "待付款"],
-      ["SO003", "王五", null, "wangwu@example.com", "2026-10-03", null, "已发货"],
-      ["SO004", "赵六", "13800000004", null, "2026-10-04", 88, "已取消"]
+      ["A100", "儿童电动车", "M001", "车架", "Q235钢", 1, "个", "主体结构"],
+      ["A100", "儿童电动车", "M002", "前轮组件", "PVC / 直径120mm", 2, "套", "左右各一"],
+      ["A100", "儿童电动车", "M003", "后轮组件", "PVC / 直径120mm", 2, "套", null],
+      ["A100", "儿童电动车", "M004", "座椅", "PU / 黑色", 1, "个", null],
+      ["A100", "儿童电动车", "E001", "驱动电机", "24V 120W", 2, "台", "左右各一"],
+      ["A100", "儿童电动车", "E002", "蓄电池", "24V 12Ah", 1, "块", null],
+      ["A100", "儿童电动车", "E003", "控制器", "24V 20A", 1, "个", null],
+      ["A100", "儿童电动车", "H001", "紧固件包", "M6不锈钢", 1, "包", "含安装螺栓"]
     ]
   }
 }
