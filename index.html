@@ -97,6 +97,21 @@
       overflow-wrap: anywhere;
     }
 
+    #source-headers {
+      display: flex; flex-wrap: wrap; gap: 4px;
+    }
+    .header-chip {
+      max-width: 100%; padding: 3px 6px;
+      border: 1px solid var(--border); border-radius: 3px;
+      background: #f8fafc; font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .header-chip .col {
+      margin-right: 4px; color: var(--primary);
+      font-family: Consolas, monospace;
+    }
+    .header-chip.empty { color: #94a3b8; }
+
     #sheet-panel { overflow-x: auto; }
     table.sheet { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 4px; }
     table.sheet th, table.sheet td {
@@ -141,6 +156,11 @@
   <div class="section">
     <h2>当前工作表</h2>
     <div id="sheet-info" class="dim">正在读取工作表信息...</div>
+  </div>
+
+  <div class="section">
+    <h2>源表头 <span id="header-count" class="dim" style="font-weight:400"></span></h2>
+    <div id="source-headers" class="dim">正在读取源表头...</div>
   </div>
 
   <div class="section">

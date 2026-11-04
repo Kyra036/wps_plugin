@@ -1,4 +1,4 @@
-// 任务窗格：选择模板 → 展示全部字段 → 拖动排序并实时预览第 1 行插件表头 → 上传导出 JSON。
+// 任务窗格：只读当前工作表 → 展示源表头与字段 → 映射排序 → 上传导出 JSON。
 (function (root) {
   "use strict";
 
@@ -57,30 +57,21 @@
 
   function persist() {
     if (UI.currentTemplateId) UI.orders[UI.currentTemplateId] = UI.order.slice();
-    Store.save({ templateId: UI.currentTemplateId || "", orders: UI.orders });
+    Store.save({ orders: UI.orders });
   }
 
   function safeFileName(text) {
     return String(text).replace(/[\\/:*?"<>|]/g, "_");
   }
 
-  // ---------- 插件表头第 1 行 ----------
+  // ---------- 字段顺序预览 ----------
 
-  // 所有表头写入串行执行，避免拖拽过程中快速换位时后写覆盖先写。
   function writeHeader(order) {
-    const labels = labelsFor(order);
-    const previousCount = UI.lastLabelCount;
-    UI.lastLabelCount = labels.length;
-    UI.writeChain = UI.writeChain
-      .then(() => UI.adapter.writePluginHeader(labels, previousCount))
-      .then(() => {
-        renderSheetInfo();
-        renderSheetPanel();
-      })
-      .catch((err) => {
-        showErrors([`插件表头写入失败：${err.message}`]);
-      });
-    return UI.writeChain;
+    UI.lastLabelCount = labelsFor(order).length;
+    renderSheetInfo();
+    renderSourceHeaders();
+    renderSheetPanel();
+    return Promise.resolve();
   }
 
   // ---------- 模板 ----------
@@ -89,7 +80,6 @@
     const template = UI.templates.find((t) => t.id === templateId);
     if (!template) return;
 
-    const previousCount = UI.lastLabelCount;
     UI.currentTemplateId = template.id;
     UI.fields = Core.flattenFields(template.fields);
     UI.order = Core.normalizeOrder(UI.orders[template.id], UI.fields);
@@ -99,28 +89,11 @@
     persist();
     renderAll();
 
-    const labels = labelsFor();
-    try {
-      UI.writeChain = UI.writeChain
-        .then(async () => {
-          const info = await UI.adapter.ensurePluginHeader(labels);
-          const clearTo = Math.max(previousCount, (info && info.headerWidth) || 0);
-          await UI.adapter.writePluginHeader(labels, clearTo);
-          return info;
-        })
-        .then((info) => {
-          renderSheetInfo();
-          renderSheetPanel();
-          if (announce) {
-            toast(info && info.created ? "已在第 1 行创建插件表头" : "已切换模板，插件表头已更新");
-          }
-        })
-        .catch((err) => {
-          showErrors([`插件表头创建失败：${err.message}`]);
-        });
-      await UI.writeChain;
-    } catch (_) {
-      /* 错误已在上方显示 */
+    renderSheetInfo();
+    renderSourceHeaders();
+    renderSheetPanel();
+    if (announce) {
+      toast("已切换模板");
     }
   }
 
@@ -136,8 +109,8 @@
     select.value = UI.currentTemplateId || "";
     select.disabled = UI.busy || !!UI.drag;
     $("tpl-hint").textContent = UI.currentTemplateId
-      ? "模板来自 data/mock.json，插件内不可编辑"
-      : "选择模板后会在工作表第 1 行创建插件表头";
+      ? "模板已加载，源工作表不会被修改"
+      : "选择 BOM 模板后开始匹配源表头";
   }
 
   // ---------- 渲染：字段列表 ----------
@@ -209,7 +182,7 @@
     $("btn-upload").disabled = !canUpload;
     $("tpl-select").disabled = UI.busy || !!UI.drag;
     $("upload-hint").textContent = hasTemplate
-      ? "拖动字段调整列顺序；上传会按当前顺序导出原始表头下方（第 3 行起）的数据"
+      ? "上传会按当前字段顺序读取源表头下方的数据，不修改工作表"
       : "选择模板后即可拖动排序并上传";
   }
 
@@ -332,26 +305,61 @@
       `<span class="label">区域大小</span><span class="value">${size}</span>`;
   }
 
+  function renderSourceHeaders() {
+    const list = $("source-headers");
+    const count = $("header-count");
+    if (!list || !count) return;
+
+    let headers;
+    try {
+      headers = UI.adapter && typeof UI.adapter.getSourceHeaders === "function"
+        ? UI.adapter.getSourceHeaders()
+        : [];
+    } catch (err) {
+      count.textContent = "";
+      list.className = "error-text";
+      list.textContent = `读取源表头失败：${err.message}`;
+      return;
+    }
+
+    count.textContent = `${headers.length} 列`;
+    list.className = "";
+    list.innerHTML = "";
+    if (headers.length === 0) {
+      list.className = "dim";
+      list.textContent = "当前工作表没有可读取的表头";
+      return;
+    }
+
+    headers.forEach((header, index) => {
+      const chip = document.createElement("span");
+      chip.className = "header-chip" + (header ? "" : " empty");
+
+      const column = document.createElement("span");
+      column.className = "col";
+      column.textContent = Core.colLetter(index);
+
+      chip.append(column, document.createTextNode(header || "（空表头）"));
+      list.appendChild(chip);
+    });
+  }
+
   function renderSheetPanel() {
     const panel = $("sheet-panel");
     const view = UI.adapter.getSheetView ? UI.adapter.getSheetView() : null;
     if (!view) {
       panel.innerHTML = currentTemplate()
-        ? '<div class="dim">插件表头已写入当前工作表第 1 行。</div>'
-        : '<div class="dim">选择模板后会写入工作表第 1 行。</div>';
+        ? '<div class="dim">当前工作表已读取，源表头见上方。</div>'
+        : '<div class="dim">选择模板后会读取当前工作表。</div>';
       return;
     }
     const headers = view.headers || [];
     const colCount = Math.max(
-      view.pluginLabels.length,
       headers.length,
       ...view.rows.map((row) => row.length),
       0
     );
-    const hasPlugin = view.hasPluginHeader;
-    let html = `<div class="sheet-name">模拟工作表：${esc(view.name)}` +
-      (hasPlugin ? "（第 1 行插件表头 / 第 2 行原始表头）" : "（第 1 行原始表头）") +
-      "</div>";
+    let html = `<div class="sheet-name">模拟工作表：${esc(view.name)}（第 1 行源表头）</div>`;
     html += '<table class="sheet"><tr><th></th>';
     for (let c = 0; c < colCount; c++) {
       html += `<th class="col-letter">${Core.colLetter(c)}</th>`;
@@ -359,17 +367,6 @@
     html += "</tr>";
 
     let rowNo = 1;
-    if (hasPlugin) {
-      html += `<tr><td class="row-no">${rowNo++}</td>`;
-      for (let c = 0; c < colCount; c++) {
-        const label = view.pluginLabels[c] || "";
-        const cls = label ? "" : " empty";
-        const hover = c === view.highlightCol ? " hover" : "";
-        html += `<td class="plugin-header${cls}${hover}">${esc(label)}</td>`;
-      }
-      html += "</tr>";
-    }
-
     html += `<tr><td class="row-no">${rowNo++}</td>`;
     for (let c = 0; c < colCount; c++) {
       const value = headers[c];
@@ -402,12 +399,7 @@
     updateControls();
     try {
       const leaves = Core.orderedLeaves(UI.order, UI.fields);
-      const labels = labelsFor();
       await UI.writeChain;
-      const info = await UI.adapter.ensurePluginHeader(labels);
-      const clearTo = Math.max(UI.lastLabelCount, (info && info.headerWidth) || 0);
-      await UI.adapter.writePluginHeader(labels, clearTo);
-      UI.lastLabelCount = labels.length;
 
       const rows = await UI.adapter.readRows(leaves.length);
       const json = Core.buildExport(template, UI.adapter.getSheetName(), UI.order, UI.fields, rows);
@@ -419,6 +411,7 @@
       await UI.adapter.uploadJson(json, filename);
       toast(`已导出 ${rows.length} 行数据：${filename}`);
       renderSheetInfo();
+      renderSourceHeaders();
       renderSheetPanel();
     } catch (err) {
       showErrors([`上传失败：${err.message}`]);
@@ -469,6 +462,7 @@
 
   function renderAll() {
     renderSheetInfo();
+    renderSourceHeaders();
     renderTemplateBar();
     renderFieldList();
     renderSheetPanel();
@@ -499,6 +493,7 @@
     if (adapter.onDataChange) {
       adapter.onDataChange(() => {
         renderSheetInfo();
+        renderSourceHeaders();
         if (UI.result) {
           UI.stale = true;
           renderResult();
@@ -509,8 +504,6 @@
     $("env-tag").textContent = adapter.isMock ? "浏览器 mock 模式" : "WPS 环境";
     renderAll();
 
-    const initial = templates.some((t) => t.id === saved.templateId) ? saved.templateId : "";
-    if (initial) activateTemplate(initial, false);
   }
 
   root.UI = { init };
