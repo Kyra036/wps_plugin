@@ -1,7 +1,6 @@
-// 纯逻辑层：模板字段解析、排序、插件表头文本、嵌套 JSON 导出。
-// 模板结构（只读，来自 data/mock.json）：
-//   { id, name, fields: [{ key, label, children?: [...] }] }
-// 字段树中的分组只用于组织层级和生成嵌套 JSON，不占工作表列；叶子字段才对应列。
+// 纯逻辑层：模板字段解析、排序、字段标签和嵌套 JSON 导出。
+// 模板来自 data/mock.json，结构可以是 groups[].fields[]，也兼容旧的 fields[]。
+// visible=false 的组或字段不会进入字段列表，也不会参与上传。
 (function (root, factory) {
   const Core = factory();
   if (typeof module !== "undefined" && module.exports) module.exports = Core;
@@ -24,13 +23,13 @@
   }
 
   // 递归展开任意层级的字段树，返回按模板声明顺序排列的叶子字段。
-  // 多层 JSON 的关键在这里：无论分组嵌套多深，最终都变成可排序、可落列的叶子列表。
+  // 只有叶子字段对应工作表列；分组路径用于显示分组和生成嵌套 JSON。
   function flattenFields(fields, parentKeys, parentLabels) {
     const keys = parentKeys || [];
     const labels = parentLabels || [];
     const out = [];
     for (const field of fields || []) {
-      if (!field || typeof field.key !== "string" || !field.key) continue;
+      if (!field || field.visible === false || typeof field.key !== "string" || !field.key) continue;
       const path = keys.concat(field.key);
       const labelPath = labels.concat(field.label || field.key);
       if (Array.isArray(field.children) && field.children.length > 0) {
@@ -47,6 +46,27 @@
       }
     }
     return out;
+  }
+
+  /**
+   * 展开模板分组。
+   * groups[].visible=false 时整组跳过；字段级 visible=false 由 flattenFields 处理。
+   * 返回值仍是叶子字段数组，后续排序、映射和导出逻辑不需要直接理解分组结构。
+   */
+  function flattenTemplate(template) {
+    const groups = Array.isArray(template.groups)
+      ? template.groups
+      : [{ key: "", label: "", fields: template.fields || [] }];
+    const leaves = [];
+    for (const group of groups) {
+      if (!group || group.visible === false) continue;
+      leaves.push(...flattenFields(
+        group.fields,
+        group.key ? [group.key] : [],
+        group.label ? [group.label] : []
+      ));
+    }
+    return leaves;
   }
 
   function leafMap(leaves) {
@@ -156,6 +176,7 @@
     RESULT_VERSION,
     colLetter,
     flattenFields,
+    flattenTemplate,
     defaultOrder,
     normalizeOrder,
     moveItem,

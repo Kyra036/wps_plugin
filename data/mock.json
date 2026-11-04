@@ -4,42 +4,61 @@
     {
       "id": "tpl_bom_standard_v1",
       "name": "BOM 标准模板（示例）",
-      "fields": [
+      "builtIn": true,
+      "version": 1,
+      "groups": [
         {
-          "key": "parent",
-          "label": "父件信息",
-          "children": [
-            { "key": "code", "label": "父件编码" },
-            { "key": "name", "label": "父件名称" }
+          "key": "product",
+          "label": "产品定义",
+          "visible": true,
+          "builtIn": true,
+          "fields": [
+            { "key": "levelNo", "label": "层级编号", "visible": true, "builtIn": true, "aliases": ["层级", "层级号"] },
+            { "key": "productCode", "label": "产品编号", "visible": true, "builtIn": true, "aliases": ["物料编码", "料号"] },
+            { "key": "productName", "label": "产品名称", "visible": true, "builtIn": true, "aliases": ["物料名称", "品名"] },
+            { "key": "productSpec", "label": "产品规格", "visible": true, "builtIn": true, "aliases": ["规格", "规格型号"] },
+            { "key": "productAttribute", "label": "产品属性", "visible": true, "builtIn": true, "aliases": ["属性"] },
+            { "key": "unit", "label": "单位", "visible": true, "builtIn": true, "aliases": ["计量单位", "基本单位"] },
+            { "key": "keyPart", "label": "关键部件", "visible": true, "builtIn": true, "aliases": ["关键件"] }
           ]
         },
         {
-          "key": "child",
-          "label": "子件信息",
-          "children": [
-            { "key": "code", "label": "子件编码" },
-            { "key": "name", "label": "物料名称" },
-            { "key": "specification", "label": "规格型号" }
+          "key": "bom",
+          "label": "物料清单",
+          "visible": true,
+          "builtIn": true,
+          "fields": [
+            { "key": "manufacturingMode", "label": "制造模式", "visible": true, "builtIn": true, "aliases": ["生产模式"] },
+            { "key": "feedProcess", "label": "投料工序", "visible": true, "builtIn": true, "aliases": ["投料"] },
+            { "key": "parentBase", "label": "父项基数", "visible": true, "builtIn": true, "aliases": ["父件基数"] },
+            { "key": "unitUsage", "label": "单位用量", "visible": true, "builtIn": true, "aliases": ["用量", "数量"] },
+            { "key": "lossRate", "label": "损耗率%", "visible": true, "builtIn": true, "aliases": ["损耗率", "损耗"] },
+            { "key": "remark", "label": "备注", "visible": true, "builtIn": true, "aliases": ["说明"] }
           ]
         },
-        { "key": "quantity", "label": "数量" },
-        { "key": "unit", "label": "单位" },
-        { "key": "remark", "label": "备注" }
+        {
+          "key": "route",
+          "label": "工艺路线",
+          "visible": true,
+          "builtIn": true,
+          "fields": [
+            { "key": "routeName", "label": "工艺路线名称", "visible": true, "builtIn": true, "aliases": ["工艺路线", "路线名称"] },
+            { "key": "processList", "label": "工序列表", "visible": true, "builtIn": true, "aliases": ["工序", "工序清单"] }
+          ]
+        }
       ]
     }
   ],
   "mockSheet": {
     "name": "BOM",
-    "headers": ["父件编码", "父件名称", "子件编码", "物料名称", "规格型号", "数量", "单位", "备注"],
+    "headers": ["层级编号", "产品编号", "产品名称", "产品规格", "产品属性", "单位", "关键部件", "制造模式", "投料工序", "父项基数", "单位用量", "损耗率%", "备注", "工艺路线名称", "工序列表"],
     "rows": [
-      ["A100", "儿童电动车", "M001", "车架", "Q235钢", 1, "个", "主体结构"],
-      ["A100", "儿童电动车", "M002", "前轮组件", "PVC / 直径120mm", 2, "套", "左右各一"],
-      ["A100", "儿童电动车", "M003", "后轮组件", "PVC / 直径120mm", 2, "套", null],
-      ["A100", "儿童电动车", "M004", "座椅", "PU / 黑色", 1, "个", null],
-      ["A100", "儿童电动车", "E001", "驱动电机", "24V 120W", 2, "台", "左右各一"],
-      ["A100", "儿童电动车", "E002", "蓄电池", "24V 12Ah", 1, "块", null],
-      ["A100", "儿童电动车", "E003", "控制器", "24V 20A", 1, "个", null],
-      ["A100", "儿童电动车", "H001", "紧固件包", "M6不锈钢", 1, "包", "含安装螺栓"]
+      ["1", "A-PB-001", "储物架", "100*100", "自制", "个", "是", "自制", "下料", 1, 1, 2, "主框架", "标准工艺", "下料,焊接,喷涂"],
+      ["1.1", "A-PB-002", "大托盘", "40*40", "自制", "个", "否", "自制", "下料", 1, 1, 2, "承重件", "标准工艺", "下料,焊接,喷涂"],
+      ["1.1.1", "A-PB-003", "网片", "40*40", "外购", "个", "否", "外购", "投料", 1, 1.5, 1, null, "标准工艺", "裁切,校平"],
+      ["1.1.2", "A-PB-004", "板材", "10m", "外购", "张", "否", "外购", "投料", 1, 1.5, 3, "原材料", "标准工艺", "裁切"],
+      ["1.2", "A-PB-005", "中托盘", "30*30", "自制", "个", "否", "自制", "下料", 1, 1, 2, null, "标准工艺", "下料,焊接"],
+      ["1.3", "A-PB-006", "小托盘", "20*20", "自制", "个", "否", "自制", "下料", 1, 1, 2, null, "标准工艺", "下料,焊接"]
     ]
   }
 }

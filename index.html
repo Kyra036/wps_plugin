@@ -100,6 +100,14 @@
     #source-headers {
       display: flex; flex-wrap: wrap; gap: 4px;
     }
+    /* 模板分组标签：只展示模板结构，不参与字段映射。 */
+    #template-groups {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;
+    }
+    .group-chip {
+      padding: 2px 6px; border: 1px solid var(--border); border-radius: 3px;
+      background: #eff6ff; color: var(--primary); font-size: 11px;
+    }
     .header-chip {
       max-width: 100%; padding: 3px 6px;
       border: 1px solid var(--border); border-radius: 3px;
@@ -175,6 +183,8 @@
     <h2>模板 <span id="env-tag" class="dim" style="font-weight:400"></span></h2>
     <select id="tpl-select" aria-label="选择模板"></select>
     <div id="tpl-hint" class="dim" style="font-size:12px;margin-top:4px"></div>
+    <!-- 选择模板后显示“产品定义 / 物料清单 / 工艺路线”等分组。 -->
+    <div id="template-groups"></div>
   </div>
 
   <div class="section">

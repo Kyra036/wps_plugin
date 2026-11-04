@@ -79,12 +79,13 @@
 
   // ---------- 模板 ----------
 
+  // 模板选中后展开分组字段，并恢复该模板上次保存的字段顺序。
   async function activateTemplate(templateId, announce) {
     const template = UI.templates.find((t) => t.id === templateId);
     if (!template) return;
 
     UI.currentTemplateId = template.id;
-    UI.fields = Core.flattenFields(template.fields);
+    UI.fields = Core.flattenTemplate(template);
     UI.order = Core.normalizeOrder(UI.orders[template.id], UI.fields);
     UI.lastLabelCount = UI.order.length;
     UI.result = null;
@@ -114,6 +115,25 @@
     $("tpl-hint").textContent = UI.currentTemplateId
       ? "模板已加载，源工作表不会被修改"
       : "选择 BOM 模板后开始匹配源表头";
+    renderTemplateGroups();
+  }
+
+  function renderTemplateGroups() {
+    const list = $("template-groups");
+    const template = currentTemplate();
+    list.innerHTML = "";
+    if (!template) return;
+
+    const groups = Array.isArray(template.groups)
+      ? template.groups.filter((group) => group.visible !== false)
+      : [];
+    // 当前只渲染可见分组标签；字段显隐编辑和“我的模板”在后续步骤实现。
+    groups.forEach((group) => {
+      const chip = document.createElement("span");
+      chip.className = "group-chip";
+      chip.textContent = group.label || group.key;
+      list.appendChild(chip);
+    });
   }
 
   // ---------- 渲染：字段列表 ----------
