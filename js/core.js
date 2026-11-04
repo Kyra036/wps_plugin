@@ -24,16 +24,18 @@
 
   // 递归展开任意层级的字段树，返回按模板声明顺序排列的叶子字段。
   // 只有叶子字段对应工作表列；分组路径用于显示分组和生成嵌套 JSON。
-  function flattenFields(fields, parentKeys, parentLabels) {
+  function flattenFields(fields, parentKeys, parentLabels, includeHidden) {
     const keys = parentKeys || [];
     const labels = parentLabels || [];
     const out = [];
     for (const field of fields || []) {
-      if (!field || field.visible === false || typeof field.key !== "string" || !field.key) continue;
+      if (!field || typeof field.key !== "string" || !field.key) continue;
+      const visible = field.visible !== false;
+      if (!visible && !includeHidden) continue;
       const path = keys.concat(field.key);
       const labelPath = labels.concat(field.label || field.key);
       if (Array.isArray(field.children) && field.children.length > 0) {
-        out.push(...flattenFields(field.children, path, labelPath));
+        out.push(...flattenFields(field.children, path, labelPath, includeHidden));
       } else {
         out.push({
           id: path.join("."),
@@ -42,6 +44,7 @@
           path,
           labelPath,
           groupLabels: labelPath.slice(0, -1),
+          visible,
         });
       }
     }
@@ -51,22 +54,26 @@
   /**
    * 展开模板分组。
    * groups[].visible=false 时整组跳过；字段级 visible=false 由 flattenFields 处理。
-   * 返回值仍是叶子字段数组，后续排序、映射和导出逻辑不需要直接理解分组结构。
+   * sourceIndex 保留字段在完整模板中的原始列位置，隐藏字段不会导致后续列错位。
    */
   function flattenTemplate(template) {
     const groups = Array.isArray(template.groups)
       ? template.groups
       : [{ key: "", label: "", fields: template.fields || [] }];
-    const leaves = [];
+    const sourceLeaves = [];
     for (const group of groups) {
       if (!group || group.visible === false) continue;
-      leaves.push(...flattenFields(
+      sourceLeaves.push(...flattenFields(
         group.fields,
         group.key ? [group.key] : [],
-        group.label ? [group.label] : []
+        group.label ? [group.label] : [],
+        true
       ));
     }
-    return leaves;
+    sourceLeaves.forEach((leaf, index) => {
+      leaf.sourceIndex = index;
+    });
+    return sourceLeaves.filter((leaf) => leaf.visible);
   }
 
   function leafMap(leaves) {
@@ -151,7 +158,8 @@
     return rows.map((row) => {
       const record = {};
       leaves.forEach((leaf, index) => {
-        setPath(record, leaf.path, convertCell(row[index]));
+        const sourceIndex = Number.isInteger(leaf.sourceIndex) ? leaf.sourceIndex : index;
+        setPath(record, leaf.path, convertCell(row[sourceIndex]));
       });
       return record;
     });
@@ -166,7 +174,8 @@
       fields: current.map((leaf, index) => ({
         path: leaf.path.join("."),
         label: leaf.label,
-        column: colLetter(index),
+        // 使用源字段位置，隐藏字段后列字母不会重新压缩。
+        column: colLetter(Number.isInteger(leaf.sourceIndex) ? leaf.sourceIndex : index),
       })),
       records: buildRecords(rows, current),
     };

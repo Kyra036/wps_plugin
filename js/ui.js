@@ -201,21 +201,33 @@
     });
   }
 
-  // 模板配置区展示完整分组和字段状态；当前只读，P10 再开放字段显隐操作。
+  // 模板配置区展示完整分组和字段状态，并通过复选框临时调整字段显隐。
   function renderTemplateConfig() {
     const panel = $("template-config");
     const list = $("template-config-groups");
     const template = currentTemplate();
+    // 重新渲染时保留用户已展开的分组；切换模板时恢复为默认展开第一组。
+    const openGroupKeys = new Set(
+      Array.from(list.querySelectorAll("details.config-group[open]"))
+        .map((element) => element.dataset.groupKey)
+        .filter(Boolean)
+    );
+    const sameTemplate = list.dataset.templateId === (template && template.id);
     list.innerHTML = "";
     panel.classList.toggle("hidden", !template);
-    if (!template) return;
+    if (!template) {
+      delete list.dataset.templateId;
+      return;
+    }
+    list.dataset.templateId = template.id;
 
     const groups = Array.isArray(template.groups) ? template.groups : [];
     groups.forEach((group, groupIndex) => {
       const groupBox = document.createElement("details");
       groupBox.className = "config-group";
+      groupBox.dataset.groupKey = group.key;
       // 默认展开第一个分组，其他分组保持折叠，避免窄任务窗格一次显示过长。
-      groupBox.open = groupIndex === 0;
+      groupBox.open = sameTemplate ? openGroupKeys.has(group.key) : groupIndex === 0;
 
       const fields = Array.isArray(group.fields) ? group.fields : [];
       const visibleCount = fields.filter((field) => field.visible !== false).length;
@@ -224,9 +236,17 @@
       summary.textContent = `${group.label || group.key} · ${groupState}`;
       groupBox.appendChild(summary);
 
-      fields.forEach((field) => {
-        const row = document.createElement("div");
+      fields.forEach((field, fieldIndex) => {
+        const row = document.createElement("label");
         row.className = "config-field";
+
+        const toggle = document.createElement("input");
+        toggle.type = "checkbox";
+        toggle.checked = field.visible !== false;
+        toggle.disabled = group.visible === false;
+        toggle.dataset.groupIndex = String(groupIndex);
+        toggle.dataset.fieldIndex = String(fieldIndex);
+        toggle.setAttribute("aria-label", `显示字段 ${field.label || field.key}`);
 
         const state = document.createElement("span");
         const hidden = field.visible === false;
@@ -241,12 +261,36 @@
         key.className = "field-key";
         key.textContent = `${group.key}.${field.key}`;
 
-        row.append(state, name, key);
+        row.append(toggle, name, state, key);
         groupBox.appendChild(row);
       });
 
       list.appendChild(groupBox);
     });
+  }
+
+  // 字段显隐是当前会话配置；P12 才会把调整保存为“我的模板”。
+  function updateFieldVisibility(groupIndex, fieldIndex, visible) {
+    const template = currentTemplate();
+    const group = template && template.groups && template.groups[groupIndex];
+    const field = group && group.fields && group.fields[fieldIndex];
+    if (!field) return;
+
+    const allFields = template.groups.flatMap((item) => item.fields || []);
+    const visibleCount = allFields.filter((item) => item.visible !== false).length;
+    const nextVisibleCount = visibleCount - (field.visible === false ? 0 : 1) + (visible ? 1 : 0);
+    if (nextVisibleCount === 0) {
+      toast("至少保留一个可见字段");
+      renderTemplateConfig();
+      return;
+    }
+
+    field.visible = visible;
+    UI.fields = Core.flattenTemplate(template);
+    UI.order = Core.normalizeOrder(UI.orders[template.id], UI.fields);
+    if (UI.result) UI.stale = true;
+    renderAll();
+    toast(`${field.label || field.key}已${visible ? "显示" : "隐藏"}`);
   }
 
   // ---------- 渲染：字段列表 ----------
@@ -290,7 +334,8 @@
         `  <div class="field-title"><span>${esc(field.label)}</span><span class="mono">${esc(field.path.join("."))}</span></div>` +
         (group ? `  <div class="field-path">${esc(group)}</div>` : "") +
         `</div>` +
-        `<span class="field-col">${Core.colLetter(index)}</span>`;
+        // 隐藏字段后仍显示字段真实对应的源列字母，不能按当前可见序号重新编号。
+        `<span class="field-col">${Core.colLetter(field.sourceIndex ?? index)}</span>`;
 
       row.addEventListener("dragstart", (ev) => onDragStart(ev, index));
       row.addEventListener("dragover", (ev) => onDragOver(ev, index));
@@ -298,7 +343,8 @@
       row.addEventListener("dragend", onDragEnd);
       row.addEventListener("mouseenter", async () => {
         row.classList.add("hover");
-        await UI.adapter.highlightColumn(index);
+        // 高亮使用源列位置，避免隐藏字段后悬停到错误的列。
+        await UI.adapter.highlightColumn(field.sourceIndex ?? index);
         renderSheetPanel();
       });
       row.addEventListener("mouseleave", async () => {
@@ -566,7 +612,12 @@
       const leaves = Core.orderedLeaves(UI.order, UI.fields);
       await UI.writeChain;
 
-      const rows = await UI.adapter.readRows(leaves.length);
+      // 读取完整源列范围；buildRecords 再按每个字段的 sourceIndex 取值。
+      const sourceColumnCount = leaves.reduce(
+        (max, leaf) => Math.max(max, (Number.isInteger(leaf.sourceIndex) ? leaf.sourceIndex : 0) + 1),
+        leaves.length
+      );
+      const rows = await UI.adapter.readRows(sourceColumnCount);
       const json = Core.buildExport(template, UI.adapter.getSheetName(), UI.order, UI.fields, rows);
       UI.result = json;
       UI.stale = false;
@@ -594,7 +645,7 @@
     }
     section.classList.remove("hidden");
     const json = UI.result;
-    const stale = UI.stale ? " · 字段顺序已变化，请重新上传" : "";
+    const stale = UI.stale ? " · 字段配置或顺序已变化，请重新上传" : "";
     $("res-stats").textContent = `${json.sheet} · ${json.fields.length} 个字段 · ${json.records.length} 行${stale}`;
     $("res-json").textContent = JSON.stringify(json, null, 2);
   }
@@ -649,6 +700,14 @@
     $("btn-copy").addEventListener("click", copyResult);
     $("btn-export").addEventListener("click", exportResult);
     $("btn-clear-template").addEventListener("click", clearCurrentTemplate);
+    $("template-config-groups").addEventListener("change", (ev) => {
+      if (!(ev.target instanceof HTMLInputElement) || ev.target.type !== "checkbox") return;
+      updateFieldVisibility(
+        Number(ev.target.dataset.groupIndex),
+        Number(ev.target.dataset.fieldIndex),
+        ev.target.checked
+      );
+    });
 
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && UI.drag) cancelDrag();

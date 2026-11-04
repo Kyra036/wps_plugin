@@ -144,15 +144,17 @@
       cursor: pointer; color: var(--text-2); font-size: 12px;
     }
     .config-field {
-      display: grid; grid-template-columns: 36px minmax(0, 1fr);
-      gap: 2px 6px; padding: 4px 0 4px 8px;
+      display: grid; grid-template-columns: 16px minmax(0, 1fr) auto;
+      align-items: center; gap: 2px 6px; padding: 4px 0 4px 8px;
       border-top: 1px dashed #e2e8f0;
+      cursor: pointer;
     }
+    .config-field input { accent-color: var(--primary); margin: 0; }
     .config-field .field-name {
       min-width: 0; font-size: 12px; overflow-wrap: anywhere;
     }
     .config-field .field-key {
-      grid-column: 2; color: var(--text-2);
+      grid-column: 2 / 4; color: var(--text-2);
       font-family: Consolas, monospace; font-size: 10px;
     }
     .visibility-state {
@@ -162,6 +164,7 @@
     .visibility-state.hidden-field {
       background: #f1f5f9; color: #64748b;
     }
+    #template-config-note { margin-top: 6px; font-size: 10px; color: var(--text-2); }
     .header-chip {
       max-width: 100%; padding: 3px 6px;
       border: 1px solid var(--border); border-radius: 3px;
@@ -247,6 +250,7 @@
     <details id="template-config" class="template-config hidden" open>
       <summary>模板配置</summary>
       <div id="template-config-groups"></div>
+      <div id="template-config-note" class="dim">字段显隐仅在本次会话生效，刷新后恢复模板默认配置。</div>
     </details>
   </div>
 
