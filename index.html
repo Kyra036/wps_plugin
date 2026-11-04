@@ -159,6 +159,14 @@
     }
     #toast.show { opacity: 0.95; }
 
+    #validation-status {
+      margin: 0 0 6px; padding: 6px;
+      border-radius: 3px; background: #f1f5f9;
+      color: var(--text-2); font-size: 11px; white-space: pre-wrap;
+    }
+    #validation-status.ok { background: #f0fdf4; color: var(--ok); }
+    #validation-status.error { background: #fef2f2; color: var(--error); }
+
     @media (prefers-reduced-motion: reduce) {
       * { transition: none !important; animation: none !important; }
     }
@@ -226,6 +234,8 @@
 
   <!-- 当前步骤只验证目标模具，一键上传在后续步骤接入 -->
   <section class="section">
+    <button class="secondary" id="btn-validate-bom" type="button" disabled style="width:100%">检查完整 BOM</button>
+    <div id="validation-status" class="hidden" role="status"></div>
     <button class="primary" id="btn-one-click" disabled>一键导入 BOM</button>
     <div id="import-hint" class="action-hint">请先选择模板和目标模具</div>
   </section>

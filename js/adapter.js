@@ -125,12 +125,14 @@
 
       const headerInfo = this.getHeaderInfo();
       const lastRow = used.Row + used.Rows.Count - 1;
+      const startColumn = Number(used.Column) || 1;
       const limit = Number.isInteger(maxRows) ? Math.max(0, maxRows) : Infinity;
       const dataRows = [];
       for (let row = headerInfo.dataStartRow; row <= lastRow && dataRows.length < limit; row++) {
         const values = [];
         for (let column = 0; column < colCount; column++) {
-          let value = this._readCell(sheet, row, column + 1);
+          // 以 UsedRange 的实际起始列为准，兼容 BOM 从 B 列或更右侧开始。
+          let value = this._readCell(sheet, row, startColumn + column);
           if (value instanceof Date) value = value.toISOString();
           values.push(value);
         }

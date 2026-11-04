@@ -144,6 +144,94 @@
     return "text";
   }
 
+  // 按字段映射把源表整行转换为固定字段对象，未匹配的源列会直接忽略。
+  function buildMappedRows(matches, rows, fields) {
+    const sourceIndexByField = new Map();
+    (matches || []).forEach((match) => {
+      if (match && match.fieldId && Number.isInteger(match.headerIndex)) {
+        sourceIndexByField.set(match.fieldId, match.headerIndex);
+      }
+    });
+
+    return (rows || []).map((row, rowIndex) => {
+      const record = { _rowIndex: rowIndex };
+      (fields || []).forEach((field) => {
+        const sourceIndex = sourceIndexByField.get(field.id);
+        record[field.key] = sourceIndex === undefined
+          ? null
+          : convertCell(row[sourceIndex]);
+      });
+      return record;
+    });
+  }
+
+  function isBlank(value) {
+    return value === undefined || value === null || String(value).trim() === "";
+  }
+
+  function normalizedText(value) {
+    return isBlank(value) ? null : String(value).trim();
+  }
+
+  // 完整检查当前 BOM；空行自动忽略，问题行使用实际 Excel 行号报告。
+  function validateImportRows(rows, dataStartRow) {
+    const validRows = [];
+    const errors = [];
+    const seenPartNos = new Map();
+    const firstDataRow = Number(dataStartRow) || 2;
+    const lengthRules = [
+      ["partNo", "零件编号", 200],
+      ["partName", "零件名称", 150],
+      ["partMaterial", "材质", 300],
+      ["partSpecs", "实际规格", 300],
+      ["partRemark", "备注", 200],
+      ["partProcessReq", "加工要求", 200],
+    ];
+
+    (rows || []).forEach((sourceRow) => {
+      const row = { ...sourceRow };
+      const excelRow = firstDataRow + Number(row._rowIndex || 0);
+      const values = Object.keys(row).filter((key) => key !== "_rowIndex");
+      if (values.every((key) => isBlank(row[key]))) return;
+
+      row.partNo = normalizedText(row.partNo);
+      row.partName = normalizedText(row.partName);
+      row.partMaterial = normalizedText(row.partMaterial);
+      row.partSpecs = normalizedText(row.partSpecs);
+      row.partRemark = normalizedText(row.partRemark);
+      row.partProcessReq = normalizedText(row.partProcessReq);
+      row.partNum = Number(row.partNum);
+
+      const rowErrors = [];
+      if (!row.partNo) rowErrors.push("零件编号为空");
+      if (!row.partName) rowErrors.push("零件名称为空");
+      if (!Number.isInteger(row.partNum) || row.partNum < 1) {
+        rowErrors.push("数量必须是大于 0 的整数");
+      }
+
+      lengthRules.forEach(([key, label, maxLength]) => {
+        if (row[key] && row[key].length > maxLength) {
+          rowErrors.push(`${label}不能超过 ${maxLength} 个字符`);
+        }
+      });
+
+      if (row.partNo && seenPartNos.has(row.partNo)) {
+        rowErrors.push(
+          `零件编号 ${row.partNo} 与第 ${seenPartNos.get(row.partNo)} 行重复`
+        );
+      }
+
+      if (rowErrors.length > 0) {
+        errors.push(`第 ${excelRow} 行：${rowErrors.join("；")}`);
+        return;
+      }
+      seenPartNos.set(row.partNo, excelRow);
+      validRows.push(row);
+    });
+
+    return { rows: validRows, errors };
+  }
+
   return {
     colLetter,
     flattenFields,
@@ -152,5 +240,7 @@
     autoMatchHeaders,
     convertCell,
     classifyCell,
+    buildMappedRows,
+    validateImportRows,
   };
 });

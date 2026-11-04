@@ -21,6 +21,7 @@
     existingPartsRequestId: 0,
     connection: { token: "" },
     busy: false,
+    validationBusy: false,
   };
 
   function esc(value) {
@@ -59,6 +60,13 @@
     const box = $("error-summary");
     box.textContent = "";
     box.classList.add("hidden");
+  }
+
+  // BOM 检查结果只保留在页面中，不会发送到平台。
+  function setValidationStatus(message, type) {
+    const element = $("validation-status");
+    element.textContent = message || "";
+    element.className = message ? (type || "") : "hidden";
   }
 
   function currentTemplate() {
@@ -446,6 +454,20 @@
     hint.textContent = message;
   }
 
+  // 完整检查只依赖模板和当前工作表，不要求配置令牌或选择目标模具。
+  function renderValidationState() {
+    const button = $("btn-validate-bom");
+    const template = currentTemplate();
+    const mapping = template
+      ? Core.autoMatchHeaders(UI.headerInfo ? UI.headerInfo.headers : [], UI.fields)
+      : null;
+    const ready = !!template &&
+      mapping.unmatchedTemplateFields.length === 0 &&
+      UI.totalDataRows > 0;
+    button.disabled = !ready || UI.validationBusy;
+    button.textContent = UI.validationBusy ? "正在检查..." : "检查完整 BOM";
+  }
+
   function renderAll() {
     renderSheetInfo();
     renderSourceHeaders();
@@ -455,6 +477,7 @@
     renderExistingPartsPreview();
     renderMapping();
     renderPreview();
+    renderValidationState();
     renderImportState();
   }
 
@@ -474,6 +497,7 @@
       UI.headerInfo = headerInfo;
       UI.previewRows = rows;
       UI.totalDataRows = Math.max(0, info.rowCount - (headerInfo.headerRows || 1));
+      setValidationStatus("");
       renderAll();
     } catch (error) {
       if (requestId !== UI.previewRequestId) return;
@@ -488,8 +512,54 @@
     UI.currentTemplateId = template.id;
     UI.fields = Core.flattenTemplate(template);
     clearErrors();
+    setValidationStatus("");
     renderAll();
     toast("已加载 BOM 模板");
+  }
+
+  // 读取全部源行并完成校验；该函数不调用任何平台写接口。
+  async function readAndValidateBom() {
+    const mapping = Core.autoMatchHeaders(
+      UI.headerInfo ? UI.headerInfo.headers : [],
+      UI.fields
+    );
+    if (mapping.unmatchedTemplateFields.length > 0) {
+      throw new Error(`仍有 ${mapping.unmatchedTemplateFields.length} 个 BOM 字段没有源列`);
+    }
+    const sourceRows = await UI.adapter.readRows(
+      UI.headerInfo.headers.length,
+      Number.MAX_SAFE_INTEGER
+    );
+    const mappedRows = Core.buildMappedRows(mapping.matches, sourceRows, UI.fields);
+    const validation = Core.validateImportRows(mappedRows, UI.headerInfo.dataStartRow);
+    return { sourceRows, mappedRows, validation };
+  }
+
+  async function checkBom() {
+    if (UI.validationBusy) return;
+    clearErrors();
+    setValidationStatus("正在读取并检查全部 BOM 行...");
+    UI.validationBusy = true;
+    renderValidationState();
+    try {
+      const result = await readAndValidateBom();
+      if (result.validation.errors.length > 0) {
+        showError(result.validation.errors);
+        setValidationStatus(
+          `检查完成：${result.validation.rows.length} 行有效，${result.validation.errors.length} 行有错误`,
+          "error"
+        );
+      } else {
+        setValidationStatus(`检查通过：${result.validation.rows.length} 行可导入`, "ok");
+        toast("BOM 检查通过");
+      }
+    } catch (error) {
+      showError(`BOM 检查失败：${error.message}`);
+      setValidationStatus("检查失败，请根据错误提示修改后重试", "error");
+    } finally {
+      UI.validationBusy = false;
+      renderValidationState();
+    }
   }
 
   // 查询模具时把按钮暂时置为忙碌，避免用户连续点击造成重复请求。
@@ -545,6 +615,7 @@
       if (event.target.value) activateTemplate(event.target.value);
     });
     $("btn-save-token").addEventListener("click", saveToken);
+    $("btn-validate-bom").addEventListener("click", checkBom);
     $("btn-search-mold").addEventListener("click", searchMolds);
     $("mold-keyword").addEventListener("keydown", (event) => {
       if (event.key === "Enter") searchMolds();
