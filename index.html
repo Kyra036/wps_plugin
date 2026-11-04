@@ -158,16 +158,19 @@
 <body>
   <div id="error-summary" class="hidden" tabindex="-1"></div>
 
+  <!-- 当前活动 Sheet 的只读元信息 -->
   <div class="section">
     <h2>当前工作表</h2>
     <div id="sheet-info" class="dim">正在读取工作表信息...</div>
   </div>
 
+  <!-- 客户源表的表头，顺序与工作表列顺序一致 -->
   <div class="section">
     <h2>源表头 <span id="header-count" class="dim" style="font-weight:400"></span></h2>
     <div id="source-headers" class="dim">正在读取源表头...</div>
   </div>
 
+  <!-- 选择模板后才加载系统字段 -->
   <div class="section">
     <h2>模板 <span id="env-tag" class="dim" style="font-weight:400"></span></h2>
     <select id="tpl-select" aria-label="选择模板"></select>

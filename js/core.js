@@ -89,12 +89,13 @@
     return order.map((id) => map.get(id)).filter(Boolean);
   }
 
-  // 插件表头第 1 行：按当前顺序逐列输出叶子字段的显示名。
+  // 按当前字段顺序输出模板叶子字段的显示名，用于字段预览。
   function headerLabels(order, leaves) {
     return orderedLeaves(order, leaves).map((leaf) => leaf.label);
   }
 
   function convertCell(value) {
+    // 所有导出数据在这里统一做空值和日期转换，避免各适配器产生不同格式。
     if (value === undefined || value === null) return null;
     if (typeof value === "string" && value.trim() === "") return null;
     if (value instanceof Date) {
@@ -104,6 +105,7 @@
   }
 
   function classifyCell(value) {
+    // 只用于预览统计，不改变实际单元格值。
     if (value === undefined || value === null) return "empty";
     if (typeof value === "string" && value.trim() === "") return "empty";
     if (value instanceof Date) return "date";

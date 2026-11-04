@@ -2,8 +2,10 @@
 (function (root) {
   "use strict";
 
+  // 旧版本曾在第 1 行插入插件表头；兼容这类工作簿时，源表头位于第 2 行。
   const LEGACY_SOURCE_HEADER_ROW = 2;
 
+  // JSON 只能保存字符串，Mock 日期列在这里恢复为 Date，模拟 WPS 单元格的真实类型。
   function parseMockDate(value) {
     if (value instanceof Date) return value;
     if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -29,6 +31,7 @@
       this.isMock = true;
       this.name = mockSheet.name;
       this.headers = (mockSheet.headers || []).slice();
+      // dateColumns 使用表头名称声明，避免把列字母或位置写死在 Mock 数据里。
       const dateColumns = new Set(mockSheet.dateColumns || []);
       const dateIndexes = new Set(
         this.headers
@@ -54,6 +57,7 @@
     }
 
     getSourceHeaders() {
+      // 返回副本，防止 UI 修改数组时污染 Mock 工作表。
       return this.headers.map((value) => value === null || value === undefined ? "" : String(value));
     }
 
@@ -114,6 +118,7 @@
     }
 
     _hasHeaderMark(sheet) {
+      // 只用于识别旧版本修改过的工作簿，新流程不会再写入这个标记。
       const key = this._headerKey(sheet);
       try {
         if (localStorage.getItem(key) === "1") return true;
@@ -135,6 +140,7 @@
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
       if (!used) return [];
+      // 新工作簿从 UsedRange 首行读取表头；旧工作簿则跳过历史插件表头。
       const sourceHeaderRow = this._hasHeaderMark(sheet)
         ? LEGACY_SOURCE_HEADER_ROW
         : (Number(used.Row) || 1);
@@ -163,6 +169,7 @@
       if (!used) {
         return { name: sheet.Name, startRow: 0, startColumn: 0, rowCount: 0, columnCount: 0 };
       }
+      // WPS Range 的行列号从 1 开始，UI 会转换成 A1:H9 形式。
       return {
         name: sheet.Name,
         startRow: Number(used.Row) || 1,
@@ -177,6 +184,7 @@
       const used = this._usedRange(sheet);
       if (!used) return [];
 
+      // 兼容旧工作簿：历史插件表头存在时，原表头在第 2 行。
       const row = this._hasHeaderMark(sheet) ? LEGACY_SOURCE_HEADER_ROW : (Number(used.Row) || 1);
       const startColumn = Number(used.Column) || 1;
       const columnCount = Number(used.Columns && used.Columns.Count) || 0;

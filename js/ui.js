@@ -3,6 +3,7 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  // 预览限制只影响页面渲染，上传时仍读取全部数据行。
   const PREVIEW_ROW_LIMIT = 20;
 
   const UI = {
@@ -68,6 +69,7 @@
   // ---------- 字段顺序预览 ----------
 
   function writeHeader(order) {
+    // 拖拽字段后只刷新本地预览；客户源工作表始终保持只读。
     UI.lastLabelCount = labelsFor(order).length;
     renderSheetInfo();
     renderSourceHeaders();
@@ -291,6 +293,7 @@
       return;
     }
 
+    // 适配器返回 1 基行列号，Core.colLetter 接收 0 基索引。
     const range = info.rowCount > 0 && info.columnCount > 0
       ? `${Core.colLetter(info.startColumn - 1)}${info.startRow}:` +
         `${Core.colLetter(info.startColumn + info.columnCount - 2)}` +
@@ -332,6 +335,7 @@
       return;
     }
 
+    // 按源列顺序生成表头标签，空表头也保留列位置。
     headers.forEach((header, index) => {
       const chip = document.createElement("span");
       chip.className = "header-chip" + (header ? "" : " empty");
@@ -346,6 +350,7 @@
   }
 
   function formatPreviewValue(value) {
+    // 日期仅用于预览展示；实际导出仍由 Core.convertCell 转为 ISO 字符串。
     if (value instanceof Date) {
       return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 10);
     }
@@ -372,6 +377,7 @@
       ? `显示前 ${PREVIEW_ROW_LIMIT} 行，共 ${view.rows.length} 行`
       : `显示 ${view.rows.length} 行`;
     const typeCounts = { text: 0, number: 0, date: 0, boolean: 0, empty: 0 };
+    // 统计当前预览区域，帮助确认空值、数字和日期没有被错误转换。
     previewRows.forEach((row) => {
       for (let c = 0; c < colCount; c++) typeCounts[Core.classifyCell(row[c])]++;
     });
@@ -498,6 +504,7 @@
     UI.templates = templates;
     UI.adapter = adapter;
     const saved = Store.load();
+    // 只恢复字段顺序；上次选择的模板不恢复，因此初始状态始终是“请选择模板”。
     UI.orders = saved.orders || {};
 
     $("tpl-select").addEventListener("change", (ev) => {
