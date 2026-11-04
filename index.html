@@ -196,6 +196,26 @@
       background: #f1f5f9; color: #64748b;
     }
     #template-config-note { margin-top: 6px; font-size: 10px; color: var(--text-2); }
+    /* 自动映射结果只读，P16 会在这里增加手工修正控件。 */
+    #mapping-list {
+      max-height: 300px; overflow: auto;
+      border-top: 1px solid var(--border);
+    }
+    .mapping-row {
+      display: grid; grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr);
+      align-items: center; gap: 4px; padding: 5px 0;
+      border-bottom: 1px dashed #e2e8f0; font-size: 11px;
+    }
+    .mapping-row.unmatched { background: #fef2f2; }
+    .mapping-source, .mapping-target { min-width: 0; overflow-wrap: anywhere; }
+    .mapping-source .col {
+      margin-right: 4px; color: var(--primary);
+      font-family: Consolas, monospace; font-weight: 600;
+    }
+    .mapping-target .group { color: var(--text-2); }
+    .mapping-arrow { color: var(--text-2); text-align: center; }
+    .mapping-row.unmatched .mapping-target { color: var(--error); }
+    #mapping-hint { margin-top: 5px; font-size: 10px; color: var(--text-2); }
     .header-chip {
       max-width: 100%; padding: 3px 6px;
       border: 1px solid var(--border); border-radius: 3px;
@@ -292,6 +312,13 @@
       <div id="template-config-groups"></div>
       <div id="template-config-note" class="dim">字段调整仅在本次会话生效；存在未映射自定义字段时不能上传。</div>
     </details>
+  </div>
+
+  <!-- 自动匹配结果只读展示；P16 再支持手工调整。 -->
+  <div class="section hidden" id="mapping-section">
+    <h2>字段自动映射 <span id="mapping-stats" class="dim" style="font-weight:400"></span></h2>
+    <div id="mapping-list"></div>
+    <div id="mapping-hint" class="dim"></div>
   </div>
 
   <div class="section">

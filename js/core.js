@@ -46,6 +46,7 @@
           groupLabels: labelPath.slice(0, -1),
           visible,
           builtIn: field.builtIn !== false,
+          aliases: Array.isArray(field.aliases) ? field.aliases.slice() : [],
         });
       }
     }
@@ -144,6 +145,86 @@
     return "text";
   }
 
+  // 表头比较忽略空格和常见标点，但不做模糊包含匹配，避免“单位”和“单位用量”误匹配。
+  function normalizeHeader(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[\s\u3000]+/g, "")
+      .replace(/[()（）\[\]【】/\\_\-·.,，。:%％]/g, "");
+  }
+
+  /**
+   * 使用字段名和别名执行一对一自动匹配。
+   * 优先级：分组+字段完整匹配 > 字段名匹配 > 别名匹配。
+   */
+  function autoMatchHeaders(sourceHeaders, fields) {
+    const candidates = [];
+    (sourceHeaders || []).forEach((header, headerIndex) => {
+      const sourceField = normalizeHeader(header.label || header.fullLabel);
+      const sourceFull = normalizeHeader(
+        `${header.groupLabel || ""}${header.label || header.fullLabel || ""}`
+      );
+      (fields || []).forEach((field, fieldIndex) => {
+        const targetField = normalizeHeader(field.label);
+        const targetFull = normalizeHeader(`${field.groupLabels[0] || ""}${field.label}`);
+        let score = 0;
+        let reason = "";
+
+        if (sourceFull && sourceFull === targetFull) {
+          score = 120;
+          reason = "分组与字段名称完全匹配";
+        } else if (sourceField && sourceField === targetField) {
+          score = 100;
+          reason = "字段名称完全匹配";
+        } else {
+          const aliasIndex = (field.aliases || [])
+            .map(normalizeHeader)
+            .findIndex((alias) => alias && alias === sourceField);
+          if (aliasIndex >= 0) {
+            score = 90 - Math.min(aliasIndex, 5);
+            reason = "通过字段别名匹配";
+          }
+        }
+
+        const sourceGroup = normalizeHeader(header.groupLabel);
+        const targetGroup = normalizeHeader(field.groupLabels[0]);
+        if (score > 0 && sourceGroup && sourceGroup === targetGroup) score += 5;
+        if (score > 0) {
+          candidates.push({ headerIndex, fieldIndex, score, reason });
+        }
+      });
+    });
+
+    candidates.sort((a, b) => b.score - a.score || a.headerIndex - b.headerIndex);
+    const headerMatches = new Map();
+    const usedFields = new Set();
+    candidates.forEach((candidate) => {
+      if (headerMatches.has(candidate.headerIndex) || usedFields.has(candidate.fieldIndex)) return;
+      headerMatches.set(candidate.headerIndex, candidate);
+      usedFields.add(candidate.fieldIndex);
+    });
+
+    const matches = (sourceHeaders || []).map((header, headerIndex) => {
+      const candidate = headerMatches.get(headerIndex);
+      const field = candidate ? fields[candidate.fieldIndex] : null;
+      return {
+        headerIndex,
+        header,
+        fieldId: field ? field.id : null,
+        field,
+        score: candidate ? candidate.score : 0,
+        reason: candidate ? candidate.reason : "未找到匹配字段",
+      };
+    });
+    return {
+      matches,
+      matchedCount: matches.filter((match) => match.field).length,
+      unmatchedTemplateFields: (fields || []).filter(
+        (field) => !matches.some((match) => match.fieldId === field.id)
+      ),
+    };
+  }
+
   function setPath(target, path, value) {
     let node = target;
     for (let i = 0; i < path.length - 1; i++) {
@@ -233,6 +314,8 @@
     headerLabels,
     convertCell,
     classifyCell,
+    normalizeHeader,
+    autoMatchHeaders,
     buildRecords,
     buildExport,
     buildTemplateLayout,

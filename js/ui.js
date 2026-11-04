@@ -520,6 +520,78 @@
     toast("自定义字段已删除");
   }
 
+  // 自动映射只读展示：字段名/别名匹配模板，P16 再允许人工修正。
+  function renderHeaderMapping() {
+    const section = $("mapping-section");
+    const list = $("mapping-list");
+    const stats = $("mapping-stats");
+    const hint = $("mapping-hint");
+    const template = currentTemplate();
+    list.innerHTML = "";
+    if (!template) {
+      section.classList.add("hidden");
+      stats.textContent = "";
+      hint.textContent = "";
+      return;
+    }
+
+    let headerInfo;
+    try {
+      headerInfo = UI.adapter.getHeaderInfo();
+    } catch (err) {
+      section.classList.remove("hidden");
+      stats.textContent = "";
+      hint.textContent = `读取表头映射失败：${err.message}`;
+      return;
+    }
+    const sourceHeaders = headerInfo.headers || [];
+    const result = Core.autoMatchHeaders(sourceHeaders, UI.fields);
+    section.classList.remove("hidden");
+    stats.textContent = `${result.matchedCount}/${sourceHeaders.length} 列已匹配`;
+
+    result.matches.forEach((match) => {
+      const row = document.createElement("div");
+      row.className = "mapping-row" + (match.field ? "" : " unmatched");
+      row.title = match.reason;
+
+      const source = document.createElement("span");
+      source.className = "mapping-source";
+      const column = document.createElement("span");
+      column.className = "col";
+      column.textContent = match.header.column || Core.colLetter(match.headerIndex);
+      source.append(column, document.createTextNode(match.header.fullLabel || match.header.label || ""));
+
+      const arrow = document.createElement("span");
+      arrow.className = "mapping-arrow";
+      arrow.textContent = "→";
+
+      const target = document.createElement("span");
+      target.className = "mapping-target";
+      if (match.field) {
+        const group = document.createElement("span");
+        group.className = "group";
+        group.textContent = match.field.groupLabels.length
+          ? `${match.field.groupLabels.join(" / ")} / `
+          : "";
+        target.append(group, document.createTextNode(match.field.label));
+      } else {
+        target.textContent = "未匹配";
+      }
+      row.append(source, arrow, target);
+      list.appendChild(row);
+    });
+
+    const unmatchedSourceCount = sourceHeaders.length - result.matchedCount;
+    const mismatchMessages = [];
+    if (unmatchedSourceCount > 0) mismatchMessages.push(`${unmatchedSourceCount} 个源表头未匹配`);
+    if (result.unmatchedTemplateFields.length > 0) {
+      mismatchMessages.push(`${result.unmatchedTemplateFields.length} 个模板字段未找到源列`);
+    }
+    hint.textContent = mismatchMessages.length
+      ? mismatchMessages.join("；")
+      : "所有源表头均已自动匹配";
+  }
+
   // ---------- 渲染：字段列表 ----------
 
   function renderFieldList() {
@@ -957,6 +1029,7 @@
     renderSheetInfo();
     renderSourceHeaders();
     renderTemplateBar();
+    renderHeaderMapping();
     renderFieldList();
     renderSheetPanel();
     updateControls();
@@ -1018,6 +1091,7 @@
       adapter.onDataChange(() => {
         renderSheetInfo();
         renderSourceHeaders();
+        renderHeaderMapping();
         if (UI.result) {
           UI.stale = true;
           renderResult();
