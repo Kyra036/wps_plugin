@@ -59,7 +59,7 @@
     return leaves.map((leaf) => leaf.id);
   }
 
-  // 恢复保存过的顺序：去掉模板中已不存在的字段，补上新增字段，保证每个叶子恰好一次。
+  // 字段集合发生变化时重置顺序，避免新增字段被追加到末尾后与源列错位。
   function normalizeOrder(order, leaves) {
     const ids = defaultOrder(leaves);
     const allowed = new Set(ids);
@@ -71,7 +71,7 @@
         kept.push(id);
       }
     }
-    return kept.concat(ids.filter((id) => !seen.has(id)));
+    return kept.length === ids.length ? kept : ids;
   }
 
   function moveItem(list, from, to) {
@@ -95,9 +95,21 @@
   }
 
   function convertCell(value) {
-    if (value === undefined || value === null || value === "") return null;
-    if (value instanceof Date) return value.toISOString();
+    if (value === undefined || value === null) return null;
+    if (typeof value === "string" && value.trim() === "") return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value.toISOString();
+    }
     return value;
+  }
+
+  function classifyCell(value) {
+    if (value === undefined || value === null) return "empty";
+    if (typeof value === "string" && value.trim() === "") return "empty";
+    if (value instanceof Date) return "date";
+    if (typeof value === "number") return "number";
+    if (typeof value === "boolean") return "boolean";
+    return "text";
   }
 
   function setPath(target, path, value) {
@@ -148,6 +160,7 @@
     orderedLeaves,
     headerLabels,
     convertCell,
+    classifyCell,
     buildRecords,
     buildExport,
   };

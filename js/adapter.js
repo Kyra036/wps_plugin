@@ -4,6 +4,15 @@
 
   const LEGACY_SOURCE_HEADER_ROW = 2;
 
+  function parseMockDate(value) {
+    if (value instanceof Date) return value;
+    if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const date = new Date(`${value}T00:00:00.000Z`);
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+    return value;
+  }
+
   function downloadJson(json, filename) {
     const blob = new Blob([JSON.stringify(json, null, 2)], { type: "application/json;charset=utf-8" });
     const anchor = document.createElement("a");
@@ -20,7 +29,15 @@
       this.isMock = true;
       this.name = mockSheet.name;
       this.headers = (mockSheet.headers || []).slice();
-      this.rows = mockSheet.rows.map((row) => row.slice());
+      const dateColumns = new Set(mockSheet.dateColumns || []);
+      const dateIndexes = new Set(
+        this.headers
+          .map((header, index) => dateColumns.has(header) ? index : -1)
+          .filter((index) => index >= 0)
+      );
+      this.rows = mockSheet.rows.map((row) =>
+        row.map((value, index) => dateIndexes.has(index) ? parseMockDate(value) : value)
+      );
       this.highlightCol = null;
     }
 
@@ -129,7 +146,6 @@
         const row = [];
         for (let c = 0; c < colCount; c++) {
           let value = sheet.Cells.Item(r, c + 1).Value2;
-          if (value instanceof Date) value = value.toISOString();
           row.push(value === undefined ? null : value);
         }
         rows.push(row);

@@ -345,6 +345,13 @@
     });
   }
 
+  function formatPreviewValue(value) {
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 10);
+    }
+    return value === null || value === undefined ? "" : String(value);
+  }
+
   function renderSheetPanel() {
     const panel = $("sheet-panel");
     const view = UI.adapter.getSheetView ? UI.adapter.getSheetView() : null;
@@ -364,8 +371,19 @@
     const rowSummary = view.rows.length > PREVIEW_ROW_LIMIT
       ? `显示前 ${PREVIEW_ROW_LIMIT} 行，共 ${view.rows.length} 行`
       : `显示 ${view.rows.length} 行`;
+    const typeCounts = { text: 0, number: 0, date: 0, boolean: 0, empty: 0 };
+    previewRows.forEach((row) => {
+      for (let c = 0; c < colCount; c++) typeCounts[Core.classifyCell(row[c])]++;
+    });
+    const typeLabels = { text: "文本", number: "数字", date: "日期", boolean: "布尔", empty: "空值" };
+    const typeParts = Object.keys(typeLabels)
+      .filter((type) => typeCounts[type] > 0)
+      .map((type) => `${typeLabels[type]} <strong>${typeCounts[type]}</strong>`);
     let html = `<div class="sheet-name">模拟工作表：${esc(view.name)}` +
       `（第 1 行源表头） · ${rowSummary}</div>`;
+    if (typeParts.length) {
+      html += `<div class="type-summary">类型：${typeParts.join(" · ")}</div>`;
+    }
     html += '<table class="sheet"><tr><th></th>';
     for (let c = 0; c < colCount; c++) {
       html += `<th class="col-letter">${Core.colLetter(c)}</th>`;
@@ -386,7 +404,7 @@
       for (let c = 0; c < colCount; c++) {
         const value = row[c];
         const hover = c === view.highlightCol ? " hover" : "";
-        html += `<td class="${hover}">${value === null || value === undefined ? "" : esc(value)}</td>`;
+        html += `<td class="${hover}">${esc(formatPreviewValue(value))}</td>`;
       }
       html += "</tr>";
     });
