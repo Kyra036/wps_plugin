@@ -71,6 +71,15 @@
       background: var(--primary); color: #fff; font-size: 13px; cursor: pointer;
     }
     button.primary:disabled { background: #94a3b8; cursor: not-allowed; }
+    .field-label {
+      display: block; margin: 6px 0 3px;
+      color: var(--text-2); font-size: 11px;
+    }
+    details.section > summary {
+      color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    details.section > summary span { float: right; font-weight: 400; }
+    details.section[open] > summary { margin-bottom: 6px; }
 
     #source-headers {
       display: flex; flex-wrap: wrap; gap: 4px;
@@ -147,6 +156,17 @@
     <h2>当前工作表</h2>
     <div id="sheet-info" class="dim">正在读取工作表信息...</div>
   </section>
+
+  <!-- 登录模块完成前，开发测试使用本机保存的平台令牌 -->
+  <details class="section" id="connection-panel" open>
+    <summary>开发登录 <span id="connection-status" class="dim">未配置</span></summary>
+    <label class="field-label" for="dev-token">平台访问令牌</label>
+    <input id="dev-token" type="password" autocomplete="off" placeholder="粘贴 Authorization 中的令牌" />
+    <div id="connection-hint" class="action-hint">令牌只保存在当前浏览器本地</div>
+    <div style="margin-top:6px">
+      <button class="secondary" id="btn-save-token" type="button">保存令牌</button>
+    </div>
+  </details>
 
   <!-- 源表头 -->
   <section class="section">

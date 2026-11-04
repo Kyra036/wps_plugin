@@ -19,6 +19,7 @@
     existingPartCount: null,
     partCountLoading: false,
     partCountRequestId: 0,
+    connection: { token: "" },
     busy: false,
   };
 
@@ -301,6 +302,35 @@
     select.value = UI.selectedMoldId;
   }
 
+  // 开发阶段只暴露令牌；真实接口地址固定使用 HTTPS 正式网关。
+  function renderConnection() {
+    const config = BomApi.loadConfig();
+    UI.connection = { token: config.token };
+    $("dev-token").value = config.token;
+    $("connection-status").textContent = config.token ? "已配置" : "未配置";
+    $("connection-hint").textContent = config.token
+      ? "令牌已保存在当前浏览器本地"
+      : "令牌只保存在当前浏览器本地";
+    if (config.token) $("connection-panel").open = false;
+  }
+
+  function saveToken() {
+    const config = BomApi.saveConfig({
+      baseUrl: BomApi.DEFAULT_BASE_URL,
+      token: $("dev-token").value,
+    });
+    UI.connection = { token: config.token };
+    $("dev-token").value = config.token;
+    $("connection-status").textContent = config.token ? "已配置" : "未配置";
+    $("connection-hint").textContent = config.token
+      ? "令牌已保存在当前浏览器本地"
+      : "令牌只保存在当前浏览器本地";
+    $("connection-panel").open = !config.token;
+    clearErrors();
+    toast(config.token ? "开发令牌已保存" : "请填写平台访问令牌");
+    renderImportState();
+  }
+
   // 目标模具下方只展示零件总数；读取失败时显示错误，不影响当前工作表预览。
   function renderMoldPartStatus() {
     const element = $("mold-part-status");
@@ -368,6 +398,7 @@
     let message = "";
     if (!template) message = "请先选择 BOM 模板";
     else if (missingFields > 0) message = `仍有 ${missingFields} 个 BOM 字段没有源列`;
+    else if (!UI.connection.token) message = "请先在开发登录中配置平台令牌";
     else if (!mold) message = "请先查询并选择目标模具";
     else if (UI.partCountLoading) message = "正在读取目标模具已有零件数量...";
     else if (UI.existingPartCount !== null) {
@@ -428,6 +459,12 @@
   // 查询模具时把按钮暂时置为忙碌，避免用户连续点击造成重复请求。
   async function searchMolds() {
     const keyword = $("mold-keyword").value.trim();
+    if (!UI.connection.token) {
+      $("connection-panel").open = true;
+      showError("请先在开发登录中配置平台令牌");
+      return;
+    }
+
     const button = $("btn-search-mold");
     let autoSelectMoldId = "";
     UI.busy = true;
@@ -471,6 +508,7 @@
     $("tpl-select").addEventListener("change", (event) => {
       if (event.target.value) activateTemplate(event.target.value);
     });
+    $("btn-save-token").addEventListener("click", saveToken);
     $("btn-search-mold").addEventListener("click", searchMolds);
     $("mold-keyword").addEventListener("keydown", (event) => {
       if (event.key === "Enter") searchMolds();
@@ -482,9 +520,8 @@
       adapter.onDataChange(() => loadPreviewData());
     }
 
-    $("env-tag").textContent = BomApi.isDemoMode()
-      ? (adapter.isMock ? "浏览器 Mock + 演示数据" : "演示数据模式")
-      : (adapter.isMock ? "浏览器 Mock 模式" : "WPS 环境");
+    $("env-tag").textContent = adapter.isMock ? "浏览器 Mock 模式" : "WPS 环境";
+    renderConnection();
     renderTemplateBar();
     loadPreviewData();
   }

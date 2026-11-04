@@ -3,23 +3,15 @@
   "use strict";
 
   const STORAGE_KEY = "wps_bom_platform_config_v1";
-  const DEFAULT_BASE_URL = "http://47.99.212.121:9001";
+  const DEFAULT_BASE_URL = "https://web.mjiezuo.com/prod-api";
   const DEFAULT_CLIENT_ID = "e5cd7e4891bf95d1d19206ce24a0550e";
   const REQUEST_TIMEOUT = 30000;
-  const DEMO_MOLDS = [
-    {
-      moldId: "2114535348499886082",
-      moldNo: "M-WPS-DEMO-001",
-      moldName: "BOM导入演示模具",
-    },
-  ];
-  const DEMO_PART_COUNT = 2;
 
   function normalizeBaseUrl(value) {
     const text = String(value || "").trim().replace(/\/+$/, "");
     if (!text) return DEFAULT_BASE_URL;
-    // 兼容上一版已经保存到本地的默认地址，避免用户重复修改连接配置。
-    if (/^http:\/\/47\.99\.212\.121:9001\/(prod-api|dev-api)$/i.test(text)) {
+    // 兼容旧版 HTTP 地址，统一迁移到正式 HTTPS 网关。
+    if (/^http:\/\/47\.99\.212\.121:9001(\/(prod-api|dev-api))?$/i.test(text)) {
       return DEFAULT_BASE_URL;
     }
     return text;
@@ -27,15 +19,6 @@
 
   function normalizeToken(value) {
     return String(value || "").trim().replace(/^Bearer\s+/i, "");
-  }
-
-  // 默认使用演示数据；后续接好自动登录后可通过 ?mode=platform 切回真实接口。
-  function isDemoMode() {
-    try {
-      return new URLSearchParams(location.search).get("mode") !== "platform";
-    } catch (_) {
-      return true;
-    }
   }
 
   // localStorage 在极少数 WPS 内嵌环境可能不可用，因此保留内存配置兜底。
@@ -138,14 +121,6 @@
   // 模具查询同时支持编号和名称，用户不知道内部 moldId 也能找到目标模具。
   async function searchMolds(keyword) {
     const text = String(keyword || "").trim().toLowerCase();
-    if (isDemoMode()) {
-      return DEMO_MOLDS.filter((mold) =>
-        !text ||
-        String(mold.moldNo).toLowerCase().includes(text) ||
-        String(mold.moldName).toLowerCase().includes(text)
-      );
-    }
-
     const query = encodeURIComponent(text);
     const path = `/tenant/v2/bom/getBomMoldList${query ? `?moldNameOrNo=${query}` : ""}`;
     const payload = await request(path);
@@ -154,10 +129,6 @@
 
   // 只读取分页总数，不加载零件明细；当前步骤不会修改目标模具。
   async function countParts(moldId) {
-    if (isDemoMode()) {
-      return String(moldId) === DEMO_MOLDS[0].moldId ? DEMO_PART_COUNT : 0;
-    }
-
     if (moldId === undefined || moldId === null || String(moldId).trim() === "") {
       throw new Error("缺少目标模具 ID");
     }
@@ -188,7 +159,6 @@
     saveConfig,
     normalizeBaseUrl,
     normalizeToken,
-    isDemoMode,
     searchMolds,
     countParts,
   };
