@@ -1,4 +1,4 @@
-// 平台接口层：统一处理地址、登录令牌、模具查询和只读零件信息。
+// 平台接口层：统一处理地址、登录令牌、模具、零件、模板配置和 BOM 上传。
 (function (root) {
   "use strict";
 
@@ -7,6 +7,7 @@
   const DEFAULT_CLIENT_ID = "e5cd7e4891bf95d1d19206ce24a0550e";
   const REQUEST_TIMEOUT = 30000;
 
+  // 规范化平台地址，并兼容旧版 HTTP 地址迁移到正式 HTTPS 网关。
   function normalizeBaseUrl(value) {
     const text = String(value || "").trim().replace(/\/+$/, "");
     if (!text) return DEFAULT_BASE_URL;
@@ -17,6 +18,7 @@
     return text;
   }
 
+  // 去掉用户粘贴值中的 Bearer 前缀，保存纯 Token。
   function normalizeToken(value) {
     return String(value || "").trim().replace(/^Bearer\s+/i, "");
   }
@@ -24,6 +26,7 @@
   // localStorage 在极少数 WPS 内嵌环境可能不可用，因此保留内存配置兜底。
   let memoryConfig = null;
 
+  // 读取本地平台配置；不存在或损坏时回退到默认 HTTPS 地址。
   function loadConfig() {
     if (memoryConfig) return { ...memoryConfig };
     try {
@@ -42,6 +45,7 @@
     return { ...memoryConfig };
   }
 
+  // 保存平台配置到内存和 localStorage，返回规范化后的配置。
   function saveConfig(config) {
     memoryConfig = {
       baseUrl: normalizeBaseUrl(config && config.baseUrl),
@@ -55,6 +59,7 @@
     return { ...memoryConfig };
   }
 
+  // 构造统一请求头，包含 Authorization 和平台 clientid。
   function requestHeaders(config, jsonBody) {
     const headers = {
       clientid: DEFAULT_CLIENT_ID,
@@ -64,6 +69,7 @@
     return headers;
   }
 
+  // 从平台响应中提取可展示的错误信息。
   function responseMessage(payload, status) {
     if (payload && typeof payload === "object") {
       return payload.msg || payload.message || `接口请求失败（HTTP ${status}）`;
@@ -71,7 +77,7 @@
     return `接口请求失败（HTTP ${status}）`;
   }
 
-  // 所有接口共用同一个请求入口，便于统一处理超时、登录失效和业务错误码。
+  // 所有接口共用请求入口，统一处理超时、跨域、HTTP 状态和业务 code。
   async function request(path, options) {
     const config = loadConfig();
     if (!config.token) throw new Error("请先填写平台访问令牌");

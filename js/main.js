@@ -2,6 +2,7 @@
 (function () {
   "use strict";
 
+  // 判断当前网页是否运行在 WPS 表格容器中；浏览器 Mock 模式不会存在该对象。
   function isWpsEnv() {
     return typeof window.wps !== "undefined" && typeof window.wps.EtApplication === "function";
   }
@@ -13,6 +14,7 @@
     return res.json();
   }
 
+  // 页面启动入口：加载模板，选择 WPS/Mock 适配器，然后初始化全部交互。
   async function boot() {
     const wpsMode = isWpsEnv();
     let templateLibrary;

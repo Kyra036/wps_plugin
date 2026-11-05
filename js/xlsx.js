@@ -13,6 +13,7 @@
     ["加工要求", "partProcessReq"],
   ];
 
+  // 转义 XML 特殊字符，防止单元格内容破坏 XLSX 的 XML 结构。
   function xmlEscape(value) {
     return String(value === undefined || value === null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -22,6 +23,7 @@
       .replace(/'/g, "&apos;");
   }
 
+  // 将 0 基列索引转换为 Excel 列名。
   function columnName(index) {
     let value = "";
     let number = index + 1;
@@ -41,6 +43,7 @@
     return `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
   }
 
+  // 生成工作表 XML：表头固定写入指定行，数据从下一行开始。
   function buildSheetXml(rows, headerRow) {
     const lastRow = Math.max(headerRow, headerRow + rows.length);
     const rowXml = [];
@@ -70,6 +73,7 @@
     );
   }
 
+  // 将 JavaScript 字符串编码为 UTF-8 字节，兼容旧 WPS WebView。
   function utf8Bytes(text) {
     const encoded = unescape(encodeURIComponent(String(text)));
     const bytes = new Uint8Array(encoded.length);
@@ -92,6 +96,7 @@
     return table;
   })();
 
+  // 计算 ZIP 文件所需的 CRC32 校验值。
   function crc32(bytes) {
     let crc = 0xffffffff;
     for (let index = 0; index < bytes.length; index++) {
@@ -100,6 +105,7 @@
     return (crc ^ 0xffffffff) >>> 0;
   }
 
+  // 按顺序合并多个 Uint8Array 片段。
   function concatBytes(parts) {
     const total = parts.reduce((sum, part) => sum + part.length, 0);
     const result = new Uint8Array(total);
@@ -111,14 +117,17 @@
     return result;
   }
 
+  // 以小端序写入 ZIP 头中的 16 位整数。
   function writeUint16(view, offset, value) {
     view.setUint16(offset, value, true);
   }
 
+  // 以小端序写入 ZIP 头中的 32 位整数。
   function writeUint32(view, offset, value) {
     view.setUint32(offset, value >>> 0, true);
   }
 
+  // 将日期转换为 ZIP 所需的 DOS 日期和时间字段。
   function dosDateTime(date) {
     const year = Math.max(1980, date.getFullYear());
     return {
@@ -191,6 +200,7 @@
     return concatBytes([localBytes, centralBytes, end]);
   }
 
+  // 组装一个最小但完整的 XLSX 包所需的全部 XML 文件和关系文件。
   function packageEntries(sheetName, rows, headerRow) {
     const safeSheetName = xmlEscape(sheetName || "BOM");
     return [
@@ -221,6 +231,7 @@
     ];
   }
 
+  // 对外入口：生成 BOM XLSX，优先返回 File，旧环境降级返回 Blob。
   function buildBomFile(rows, fileName, platform) {
     const options = platform || {};
     const headerRow = Number(options.headerRow) || 5;

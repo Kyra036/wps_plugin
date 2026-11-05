@@ -39,6 +39,7 @@
     uploadCompleted: false,
   };
 
+  // 转义写入 innerHTML 的文本，避免表格内容被当作 HTML 执行。
   function esc(value) {
     return String(value).replace(/[&<>"']/g, (character) => ({
       "&": "&amp;",
@@ -50,6 +51,7 @@
   }
 
   let toastTimer = null;
+  // 显示短暂的轻提示，不阻塞当前操作。
   function toast(message) {
     const element = $("toast");
     element.textContent = message;
@@ -71,6 +73,7 @@
     box.focus();
   }
 
+  // 清空顶部错误摘要。
   function clearErrors() {
     const box = $("error-summary");
     box.textContent = "";
@@ -84,18 +87,21 @@
     element.className = message ? (type || "") : "hidden";
   }
 
+  // 显示临时 XLSX 生成状态，type 可为空、ok 或 error。
   function setGenerateStatus(message, type) {
     const element = $("generate-status");
     element.textContent = message || "";
     element.className = message ? (type || "") : "hidden";
   }
 
+  // 显示真实上传状态和上传后的逐行核对结果。
   function setImportStatus(message, type) {
     const element = $("import-status");
     element.textContent = message || "";
     element.className = message ? (type || "") : "hidden";
   }
 
+  // 清空内存中的临时文件、预览和上传状态，源数据变化时调用。
   function resetGeneratedFile() {
     UI.generatedFile = null;
     UI.generatedRows = [];
@@ -164,10 +170,12 @@
     panel.classList.remove("hidden");
   }
 
+  // 返回当前选中的本地 BOM 模板。
   function currentTemplate() {
     return UI.templates.find((template) => template.id === UI.currentTemplateId) || null;
   }
 
+  // 返回当前选中的目标模具；优先使用完整对象，避免搜索结果刷新后丢失。
   function selectedMold() {
     if (UI.selectedMoldData) return UI.selectedMoldData;
     return UI.molds.find((mold) => String(mold.moldId) === String(UI.selectedMoldId)) || null;
@@ -182,6 +190,7 @@
     );
   }
 
+  // 根据表头名称生成初始字段映射，写入 UI.mappingByField。
   function applyAutoMapping() {
     const result = Core.autoMatchHeaders(
       UI.headerInfo ? UI.headerInfo.headers : [],
@@ -221,6 +230,7 @@
     renderImportState();
   }
 
+  // 用户点击自动匹配时，重置手动选择并重新执行表头匹配。
   function useAutomaticMapping() {
     if (UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy) return;
     clearErrors();
@@ -234,6 +244,7 @@
     toast("已重新按表头名称自动匹配");
   }
 
+  // 将日期和普通单元格值转换为适合页面展示的字符串。
   function formatValue(value) {
     if (value instanceof Date) {
       return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 10);
@@ -241,7 +252,7 @@
     return value === null || value === undefined ? "" : String(value);
   }
 
-  // 读取当前活动 Sheet 的范围信息，帮助用户确认没有读错工作表。
+  // 显示当前活动 Sheet 名称，帮助用户确认没有读错工作表。
   function renderSheetInfo() {
     const element = $("sheet-info");
     try {
@@ -257,6 +268,7 @@
     }
   }
 
+  // 同步表头行输入框，避免用户正在输入时被渲染覆盖。
   function renderHeaderRowControl() {
     const input = $("source-header-row");
     if (document.activeElement !== input && UI.headerRow) {
@@ -445,6 +457,7 @@
     panel.appendChild(table);
   }
 
+  // 组合模具编号和名称，作为选中后输入框的展示文本。
   function moldDisplayName(mold) {
     return [mold && mold.moldNo, mold && mold.moldName]
       .filter((value) => value !== undefined && value !== null && String(value).trim())
@@ -463,6 +476,7 @@
     return counts;
   }
 
+  // 兼容平台模板 importSchema 是对象或 JSON 字符串两种返回形式。
   function parseImportSchema(rawSchema) {
     if (!rawSchema) return null;
     if (typeof rawSchema === "string") {
@@ -506,11 +520,13 @@
     return { checked: true };
   }
 
+  // 打开模具候选下拉并刷新结果状态。
   function openMoldDropdown() {
     UI.moldDropdownOpen = true;
     renderMoldOptions();
   }
 
+  // 关闭模具候选下拉并清除键盘高亮位置。
   function closeMoldDropdown() {
     UI.moldDropdownOpen = false;
     UI.moldActiveIndex = -1;
@@ -584,6 +600,7 @@
     if (config.token) $("connection-panel").open = false;
   }
 
+  // 保存开发令牌到本地，并刷新依赖连接状态的按钮。
   function saveToken() {
     const config = BomApi.saveConfig({
       baseUrl: BomApi.DEFAULT_BASE_URL,
@@ -767,6 +784,7 @@
       : "生成临时 XLSX（暂不上传）";
   }
 
+  // 统一刷新工作表和全部业务区域的展示状态。
   function renderAll() {
     renderSheetInfo();
     renderHeaderRowControl();
@@ -835,6 +853,7 @@
     toast(`已按第 ${row} 行读取表头`);
   }
 
+  // 加载模板字段，并按当前表头自动初始化列映射。
   function activateTemplate(templateId) {
     const template = UI.templates.find((item) => item.id === templateId);
     if (!template) return;
@@ -867,6 +886,7 @@
     return { sourceRows, mappedRows, validation };
   }
 
+  // 执行只读 BOM 全量校验，并在页面显示有效行和错误行。
   async function checkBom() {
     if (UI.validationBusy) return;
     clearErrors();
@@ -913,6 +933,7 @@
     return { file, rows: result.validation.rows.slice() };
   }
 
+  // 保存生成结果到内存，并刷新临时 XLSX 预览。
   function applyTemporaryFile(generated) {
     UI.generatedFile = generated.file;
     UI.generatedRows = generated.rows;
@@ -956,7 +977,7 @@
     }
   }
 
-  // 直接上传已生成的内存 XLSX；当前版本不判断平台已有重复零件。
+  // 一键导入入口：按需生成临时 XLSX、检查模板范围、上传并核对结果。
   async function importBom() {
     if (UI.importBusy) return;
     const template = currentTemplate();
@@ -1081,6 +1102,7 @@
     renderImportState();
   }
 
+  // 对模具搜索做 350ms 防抖，避免每次按键都请求平台。
   function scheduleMoldSearch() {
     clearTimeout(UI.moldSearchTimer);
     UI.moldSearchTimer = setTimeout(() => searchMolds(), 350);
@@ -1126,6 +1148,7 @@
     }
   }
 
+  // 初始化页面模板、数据适配器、事件监听和首屏工作表预览。
   function init(templates, adapter) {
     UI.templates = templates;
     UI.adapter = adapter;

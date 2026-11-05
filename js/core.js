@@ -6,6 +6,7 @@
 })(typeof self !== "undefined" ? self : globalThis, function () {
   "use strict";
 
+  // 将 0 基列索引转换为 Excel 列名，例如 0 -> A、27 -> AB。
   function colLetter(index) {
     let value = "";
     let number = index + 1;
@@ -126,7 +127,7 @@
     };
   }
 
-  // 空值统一为 null，日期统一为 ISO 字符串，数字和布尔值保持原类型。
+  // 单元格空值统一为 null，日期转为 ISO 字符串，数字和布尔值保持原类型。
   function convertCell(value) {
     if (value === undefined || value === null) return null;
     if (typeof value === "string" && value.trim() === "") return null;
@@ -136,7 +137,7 @@
     return value;
   }
 
-  // 用于预览区域的数据类型统计。
+  // 将单元格归类为文本、数字、日期、布尔值或空值，供预览统计使用。
   function classifyCell(value) {
     if (value === undefined || value === null) return "empty";
     if (typeof value === "string" && value.trim() === "") return "empty";
@@ -206,10 +207,12 @@
     });
   }
 
+  // 判断值是否为 null、undefined、空字符串或纯空白字符串。
   function isBlank(value) {
     return value === undefined || value === null || String(value).trim() === "";
   }
 
+  // 将可选字段去空格；空值返回 null，便于后续统一判断。
   function normalizedText(value) {
     return isBlank(value) ? null : String(value).trim();
   }

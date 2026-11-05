@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- WPS 功能区配置：注册 BOM导入标签页，并将点击事件交给 ribbon.js。 -->
 <customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="OnAddinLoad">
   <ribbon startFromScratch="false">
     <tabs>

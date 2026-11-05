@@ -16,6 +16,7 @@
 
   // 浏览器 Mock：用 JSON 数据模拟一个只读工作表。
   class MockAdapter {
+    // 初始化 Mock 工作表名称、表头、数据行和默认表头位置。
     constructor(mockSheet) {
       this.isMock = true;
       this.name = mockSheet.name || "Sheet1";
@@ -24,6 +25,7 @@
       this.rows = (mockSheet.rows || []).map((row) => row.slice());
     }
 
+    // 按列数和最大行数返回 Mock 数据，用于浏览器预览和上传前校验。
     async readRows(colCount, maxRows, _headerRow) {
       const limit = Number.isInteger(maxRows) ? Math.max(0, maxRows) : this.rows.length;
       return this.rows.slice(0, limit).map((row) => {
@@ -35,6 +37,7 @@
       });
     }
 
+    // Mock 数据没有尾部格式空白，直接根据数据行数返回有效范围。
     getDataRange(headerInfo, _colCount) {
       const dataStartRow = headerInfo.dataStartRow;
       return {
@@ -43,6 +46,7 @@
       };
     }
 
+    // 返回 Mock 工作表名称。
     getSheetName() {
       return this.name;
     }
@@ -72,14 +76,17 @@
       };
     }
 
+    // 返回当前 Mock 表头名称，供旧的兼容调用使用。
     getSourceHeaders() {
       return this.getHeaderInfo().headers.map((header) => header.fullLabel);
     }
 
+    // 返回 Mock 配置的默认表头行。
     getDefaultHeaderRow() {
       return this.headerRow;
     }
 
+    // 返回工作表名称、起始位置和行列数量等只读信息。
     getSheetInfo() {
       return {
         name: this.name,
@@ -94,29 +101,35 @@
       };
     }
 
+    // Mock 不监听外部修改；保留空方法以统一适配器接口。
     onDataChange() {}
   }
 
   // WPS 表格：通过 wps.EtApplication 读取当前活动工作表。
   class WpsAdapter {
+    // 获取 WPS 表格应用对象，所有读取都基于当前活动工作簿。
     constructor() {
       this.isMock = false;
       this.app = window.wps.EtApplication();
     }
 
+    // 获取当前活动 Sheet。
     _sheet() {
       return this.app.ActiveSheet;
     }
 
+    // 兼容 UsedRange 是属性或方法的 WPS 版本差异。
     _usedRange(sheet) {
       return typeof sheet.UsedRange === "function" ? sheet.UsedRange() : sheet.UsedRange;
     }
 
+    // 读取一个单元格的原始值，空白 undefined 统一转换为 null。
     _readCell(sheet, row, column) {
       const value = sheet.Cells.Item(row, column).Value2;
       return value === undefined ? null : value;
     }
 
+    // 判断单元格是否为空，空白字符串和纯空格都视为空。
     _isBlankCell(value) {
       return value === undefined || value === null || String(value).trim() === "";
     }
@@ -133,6 +146,7 @@
       return dataStartRow - 1;
     }
 
+    // 计算最后一条有效数据行，并返回需要读取的数据行数。
     getDataRange(headerInfo, colCount) {
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
@@ -158,6 +172,7 @@
       };
     }
 
+    // 读取指定行的表头文字；未指定时默认使用 UsedRange 第一行。
     getHeaderInfo(headerRowOverride) {
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
@@ -193,6 +208,7 @@
       };
     }
 
+    // 从表头下一行读取数据，跳过 UsedRange 尾部仅有格式的空白行。
     async readRows(colCount, maxRows, headerRow) {
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
@@ -217,19 +233,23 @@
       return dataRows;
     }
 
+    // 返回 WPS 当前活动 Sheet 名称。
     getSheetName() {
       return this._sheet().Name;
     }
 
+    // 返回默认表头行的全部列名。
     getSourceHeaders() {
       return this.getHeaderInfo().headers.map((header) => header.fullLabel);
     }
 
+    // 返回 UsedRange 的起始行，作为源表头行的初始值。
     getDefaultHeaderRow() {
       const used = this._usedRange(this._sheet());
       return used ? (Number(used.Row) || 1) : 1;
     }
 
+    // 返回当前 Sheet 的 UsedRange 信息；空表返回零值。
     getSheetInfo() {
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
@@ -245,6 +265,7 @@
       };
     }
 
+    // 注册 WPS SheetChange 事件；不支持事件的老版本保持静默降级。
     onDataChange(callback) {
       try {
         window.wps.ApiEvent.AddApiEventListener(this.app, "SheetChange", () => callback());
