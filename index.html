@@ -70,6 +70,37 @@
     .inline-row {
       display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px;
     }
+    .mold-combobox {
+      position: relative;
+    }
+    .mold-combobox input {
+      padding-right: 30px;
+    }
+    .mold-dropdown-toggle {
+      position: absolute; top: 1px; right: 1px; bottom: 1px;
+      width: 28px; padding: 0;
+      border: 0; border-left: 1px solid var(--border);
+      background: #fff; color: var(--text-2);
+      font-size: 10px; cursor: pointer;
+    }
+    .mold-dropdown-toggle:disabled { color: #cbd5e1; cursor: not-allowed; }
+    .mold-results {
+      position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 12;
+      max-height: 220px; overflow-y: auto;
+      border: 1px solid var(--border); border-radius: 4px;
+      background: #fff; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    }
+    .mold-result-item {
+      padding: 6px 8px; border-bottom: 1px solid #f1f5f9;
+      color: var(--text); font-size: 12px; cursor: pointer;
+    }
+    .mold-result-item:last-child { border-bottom: 0; }
+    .mold-result-item.active, .mold-result-item:hover { background: #eff6ff; }
+    .mold-result-no { display: block; font-weight: 600; }
+    .mold-result-name { display: block; margin-top: 2px; color: var(--text-2); font-size: 11px; }
+    .mold-result-state {
+      padding: 8px; color: var(--text-2); font-size: 11px; text-align: center;
+    }
     button.secondary {
       padding: 5px 9px;
       border: 1px solid var(--border); border-radius: 3px;
@@ -251,13 +282,20 @@
   <!-- 目标模具：先按编号或名称查询，再选择这一批零件要导入的模具 -->
   <section class="section">
     <h2>目标模具</h2>
-    <div class="inline-row">
-      <input id="mold-keyword" type="text" autocomplete="off" placeholder="模具编号或名称" />
-      <button class="secondary" id="btn-search-mold" type="button">查询</button>
+    <div class="mold-combobox" id="mold-combobox">
+      <input
+        id="mold-keyword"
+        type="text"
+        autocomplete="off"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded="false"
+        aria-controls="mold-results"
+        placeholder="输入模具编号或名称"
+      />
+      <button class="mold-dropdown-toggle" id="btn-toggle-molds" type="button" aria-label="展开模具列表">▼</button>
+      <div class="mold-results hidden" id="mold-results" role="listbox"></div>
     </div>
-    <select id="mold-select" style="margin-top:5px" aria-label="选择目标模具" disabled>
-      <option value="">请先查询模具</option>
-    </select>
     <div id="mold-part-status" class="action-hint">选择模具后读取已有零件数量</div>
     <div id="existing-parts-preview" class="existing-parts hidden"></div>
   </section>

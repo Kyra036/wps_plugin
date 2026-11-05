@@ -18,6 +18,13 @@
     previewRequestId: 0,
     molds: [],
     selectedMoldId: "",
+    selectedMoldData: null,
+    moldSearching: false,
+    moldSearchError: "",
+    moldSearchTimer: null,
+    moldSearchRequestId: 0,
+    moldDropdownOpen: false,
+    moldActiveIndex: -1,
     existingParts: [],
     existingPartsLoaded: false,
     existingPartsLoading: false,
@@ -162,6 +169,7 @@
   }
 
   function selectedMold() {
+    if (UI.selectedMoldData) return UI.selectedMoldData;
     return UI.molds.find((mold) => String(mold.moldId) === String(UI.selectedMoldId)) || null;
   }
 
@@ -249,7 +257,8 @@
       element.innerHTML =
         `<span class="label">Sheet</span><span class="value">${esc(info.name)}</span>` +
         `<span class="label">使用范围</span><span class="value">${startColumn}${startRow}:${endColumn}${endRow}</span>` +
-        `<span class="label">区域大小</span><span class="value">${info.rowCount} 行 × ${info.columnCount} 列</span>`;
+        `<span class="label">区域大小</span><span class="value">${info.rowCount} 行 × ${info.columnCount} 列</span>` +
+        `<span class="label">有效数据</span><span class="value">${UI.totalDataRows} 行（末尾空白已忽略）</span>`;
     } catch (error) {
       element.textContent = `读取工作表信息失败：${error.message}`;
     }
@@ -443,24 +452,131 @@
     panel.appendChild(table);
   }
 
-  function renderMoldOptions() {
-    const select = $("mold-select");
-    select.innerHTML = "";
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = UI.molds.length ? "请选择目标模具" : "没有匹配的模具";
-    select.appendChild(placeholder);
+  function moldDisplayName(mold) {
+    return [mold && mold.moldNo, mold && mold.moldName]
+      .filter((value) => value !== undefined && value !== null && String(value).trim())
+      .join(" / ");
+  }
 
-    UI.molds.forEach((mold) => {
-      const option = document.createElement("option");
-      option.value = String(mold.moldId);
-      option.textContent = [mold.moldNo, mold.moldName]
-        .filter((value) => value !== undefined && value !== null && String(value).trim())
-        .join(" / ");
-      select.appendChild(option);
+  // 按零件编号统计平台已有数量，用于上传后识别被后端跳过的行。
+  function countPartNumbers(parts) {
+    const counts = new Map();
+    (parts || []).forEach((part) => {
+      const partNo = part && part.partNo !== undefined && part.partNo !== null
+        ? String(part.partNo).trim()
+        : "";
+      if (partNo) counts.set(partNo, (counts.get(partNo) || 0) + 1);
     });
-    select.disabled = UI.molds.length === 0 || UI.busy;
-    select.value = UI.selectedMoldId;
+    return counts;
+  }
+
+  function parseImportSchema(rawSchema) {
+    if (!rawSchema) return null;
+    if (typeof rawSchema === "string") {
+      try {
+        return JSON.parse(rawSchema);
+      } catch (_) {
+        return null;
+      }
+    }
+    return rawSchema;
+  }
+
+  // 固定结束行早于当前文件最后一行时，后部数据会被平台解析器忽略。
+  async function validateTemplateDataRange(template, lastDataRow) {
+    let payload;
+    try {
+      payload = await BomApi.getParseConfig(template.platform.excelParseConfigId);
+    } catch (error) {
+      return { checked: false, message: error.message };
+    }
+    const schema = parseImportSchema(payload && payload.data && payload.data.importSchema);
+    const sheets = schema && Array.isArray(schema.sheets) ? schema.sheets : [];
+    const fixedEnds = [];
+
+    sheets.forEach((sheet) => {
+      const end = sheet && sheet.data && sheet.data.end;
+      const strategy = String(end && end.strategy || "").toLowerCase();
+      if (strategy === "fixed" && Number.isInteger(Number(end.row))) {
+        fixedEnds.push(Number(end.row));
+      }
+    });
+
+    const blockingEnd = fixedEnds.find((row) => row < lastDataRow);
+    if (blockingEnd !== undefined) {
+      throw new Error(
+        `平台导入模板的数据结束行固定为第 ${blockingEnd} 行，` +
+        `但当前临时文件数据到第 ${lastDataRow} 行。` +
+        "请把模板数据结束策略改为 lastRow，或缩短本次导入范围。"
+      );
+    }
+    return { checked: true };
+  }
+
+  function openMoldDropdown() {
+    UI.moldDropdownOpen = true;
+    renderMoldOptions();
+  }
+
+  function closeMoldDropdown() {
+    UI.moldDropdownOpen = false;
+    UI.moldActiveIndex = -1;
+    renderMoldOptions();
+  }
+
+  // 组合框结果区只展示搜索状态和候选模具，不修改目标模具本身。
+  function renderMoldOptions() {
+    const input = $("mold-keyword");
+    const toggle = $("btn-toggle-molds");
+    const results = $("mold-results");
+    results.innerHTML = "";
+    input.setAttribute("aria-expanded", String(UI.moldDropdownOpen));
+    toggle.disabled = UI.moldSearching;
+
+    if (!UI.moldDropdownOpen) {
+      results.classList.add("hidden");
+      return;
+    }
+    results.classList.remove("hidden");
+
+    if (UI.moldSearching) {
+      const state = document.createElement("div");
+      state.className = "mold-result-state";
+      state.textContent = "正在查询模具...";
+      results.appendChild(state);
+      return;
+    }
+    if (UI.moldSearchError) {
+      const state = document.createElement("div");
+      state.className = "mold-result-state";
+      state.textContent = UI.moldSearchError;
+      results.appendChild(state);
+      return;
+    }
+    if (UI.molds.length === 0) {
+      const state = document.createElement("div");
+      state.className = "mold-result-state";
+      state.textContent = "输入编号或名称搜索模具";
+      results.appendChild(state);
+      return;
+    }
+
+    UI.molds.forEach((mold, index) => {
+      const item = document.createElement("div");
+      item.className = "mold-result-item" + (index === UI.moldActiveIndex ? " active" : "");
+      item.setAttribute("role", "option");
+      item.setAttribute("aria-selected", String(index === UI.moldActiveIndex));
+      const no = document.createElement("span");
+      no.className = "mold-result-no";
+      no.textContent = mold.moldNo || "未编号模具";
+      const name = document.createElement("span");
+      name.className = "mold-result-name";
+      name.textContent = mold.moldName || "未命名模具";
+      item.append(no, name);
+      item.addEventListener("mousedown", (event) => event.preventDefault());
+      item.addEventListener("click", () => selectMold(mold));
+      results.appendChild(item);
+    });
   }
 
   // 开发阶段只暴露令牌；真实接口地址固定使用 HTTPS 正式网关。
@@ -576,8 +692,16 @@
   }
 
   // 所有选择模具的入口都走这里，确保加载状态和请求序号同时更新。
-  function selectMold(moldId) {
-    UI.selectedMoldId = moldId || "";
+  function selectMold(mold) {
+    const selected = typeof mold === "object" && mold
+      ? mold
+      : UI.molds.find((item) => String(item.moldId) === String(mold));
+    if (!selected) return;
+    UI.selectedMoldId = String(selected.moldId);
+    UI.selectedMoldData = selected;
+    $("mold-keyword").value = moldDisplayName(selected);
+    UI.moldDropdownOpen = false;
+    UI.moldActiveIndex = -1;
     UI.existingParts = [];
     UI.existingPartsLoaded = false;
     UI.existingPartsLoading = false;
@@ -679,16 +803,18 @@
         : (UI.headerRow || defaultHeaderRow);
       const headerInfo = UI.adapter.getHeaderInfo(headerRow);
       const columnCount = headerInfo.headers ? headerInfo.headers.length : 0;
+      const dataRange = columnCount > 0
+        ? UI.adapter.getDataRange(headerInfo, columnCount)
+        : { dataRowCount: 0, lastDataRow: headerInfo.dataStartRow - 1 };
       const rows = columnCount > 0
         ? await UI.adapter.readRows(columnCount, PREVIEW_ROW_LIMIT, headerRow)
         : [];
       if (requestId !== UI.previewRequestId) return;
 
-      const lastSheetRow = info.startRow + info.rowCount - 1;
       UI.headerInfo = headerInfo;
       UI.headerRow = headerInfo.headerRow || headerRow;
       UI.previewRows = rows;
-      UI.totalDataRows = Math.max(0, lastSheetRow - headerInfo.dataStartRow + 1);
+      UI.totalDataRows = dataRange.dataRowCount;
       applyAutoMapping();
       setValidationStatus("");
       resetGeneratedFile();
@@ -763,7 +889,7 @@
           "error"
         );
       } else {
-        setValidationStatus(`检查通过：${result.validation.rows.length} 行可导入`, "ok");
+        setValidationStatus(`检查通过：${result.validation.rows.length} 行通过前端校验`, "ok");
         toast("BOM 检查通过");
       }
     } catch (error) {
@@ -852,12 +978,26 @@
     UI.importBusy = true;
     renderImportState();
     try {
-      const beforeCount = UI.existingPartsLoaded ? UI.existingParts.length : null;
+      if (!UI.existingPartsLoaded) {
+        setImportStatus("正在读取上传前的平台零件清单...");
+        await loadExistingParts(mold.moldId);
+        if (!UI.existingPartsLoaded) {
+          throw new Error("无法读取上传前的平台零件清单");
+        }
+      }
+      const beforePartNos = countPartNumbers(UI.existingParts);
+      const beforeCount = UI.existingParts.length;
       // 未单独生成时，自动完成校验和临时文件生成。
       if (!UI.generatedFile) {
         setImportStatus("正在生成临时 XLSX...");
         const generated = await buildTemporaryFile();
         applyTemporaryFile(generated);
+      }
+      setImportStatus("正在检查平台导入模板的数据范围...");
+      const lastDataRow = Number(template.platform.headerRow || 5) + UI.generatedRows.length;
+      const rangeCheck = await validateTemplateDataRange(template, lastDataRow);
+      if (!rangeCheck.checked) {
+        setImportStatus(`模板范围检查跳过：${rangeCheck.message}；继续上传...`);
       }
       setImportStatus("正在上传临时 XLSX 到平台...");
       const result = await BomApi.uploadBom(
@@ -872,13 +1012,30 @@
       await loadExistingParts(mold.moldId);
       if (UI.existingPartsLoaded) {
         const afterCount = UI.existingParts.length;
+        const afterPartNos = countPartNumbers(UI.existingParts);
+        const submittedPartNos = UI.generatedRows
+          .map((row) => String(row.partNo || "").trim())
+          .filter(Boolean);
+        const notAdded = submittedPartNos.filter(
+          (partNo) => (afterPartNos.get(partNo) || 0) <= (beforePartNos.get(partNo) || 0)
+        );
+        const existingDuplicates = notAdded.filter(
+          (partNo) => (beforePartNos.get(partNo) || 0) > 0
+        );
+        const backendSkipped = notAdded.filter(
+          (partNo) => (beforePartNos.get(partNo) || 0) === 0
+        );
         const changeText = beforeCount === null
           ? `当前共 ${afterCount} 个零件`
           : `平台零件数 ${beforeCount} → ${afterCount}`;
-        setImportStatus(
-          `上传完成：接口返回 ${count} 个新零件 ID；${changeText}`,
-          "ok"
-        );
+        const lines = [`上传完成：接口返回 ${count} 个新零件 ID；${changeText}`];
+        if (existingDuplicates.length > 0) {
+          lines.push(`未新增（平台已有同编号）：${existingDuplicates.join("、")}`);
+        }
+        if (backendSkipped.length > 0) {
+          lines.push(`未入库（后端未返回 ID）：${backendSkipped.join("、")}`);
+        }
+        setImportStatus(lines.join("\n"), notAdded.length > 0 ? "error" : "ok");
       } else {
         setImportStatus(
           `上传接口已成功，但零件清单刷新失败；请稍后手动刷新确认`,
@@ -915,50 +1072,65 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  // 查询模具时把按钮暂时置为忙碌，避免用户连续点击造成重复请求。
-  async function searchMolds() {
-    const keyword = $("mold-keyword").value.trim();
-    if (!UI.connection.token) {
-      $("connection-panel").open = true;
-      showError("请先在开发登录中配置平台令牌");
-      return;
-    }
-
-    const button = $("btn-search-mold");
-    let autoSelectMoldId = "";
-    UI.busy = true;
+  // 用户修改搜索内容时立即取消旧选择，但不打断后续输入。
+  function clearSelectedMoldForTyping() {
+    if (!UI.selectedMoldId && !UI.selectedMoldData) return;
     UI.selectedMoldId = "";
+    UI.selectedMoldData = null;
     UI.existingParts = [];
     UI.existingPartsLoaded = false;
     UI.existingPartsLoading = false;
     UI.existingPartsRequestId += 1;
-    button.disabled = true;
-    button.textContent = "查询中";
-    $("mold-select").disabled = true;
-    clearErrors();
+    UI.uploadCompleted = false;
+    setImportStatus("");
+    renderMoldPartStatus();
+    renderExistingPartsPreview();
     renderImportState();
-    try {
-      UI.molds = await BomApi.searchMolds(keyword);
-      if (UI.molds.length === 1) autoSelectMoldId = String(UI.molds[0].moldId);
-      renderMoldOptions();
-      if (UI.molds.length === 0) {
-        showError("没有找到匹配的模具，请检查模具编号或名称");
-      } else if (UI.molds.length === 1) {
-        toast("已选择唯一匹配的模具");
-      } else {
-        toast(`找到 ${UI.molds.length} 个模具，请选择`);
-      }
-    } catch (error) {
+  }
+
+  function scheduleMoldSearch() {
+    clearTimeout(UI.moldSearchTimer);
+    UI.moldSearchTimer = setTimeout(() => searchMolds(), 350);
+  }
+
+  // 远程搜索组合框：输入停止 350ms 后查询，空输入返回平台第一页模具。
+  async function searchMolds() {
+    clearTimeout(UI.moldSearchTimer);
+    const input = $("mold-keyword");
+    const keyword = input.value.trim();
+    UI.moldDropdownOpen = true;
+    UI.moldSearchError = "";
+    UI.moldActiveIndex = -1;
+
+    if (!UI.connection.token) {
       UI.molds = [];
+      UI.moldSearching = false;
+      UI.moldSearchError = "请先在开发登录中配置平台令牌";
       renderMoldOptions();
-      showError(error.message);
-    } finally {
-      UI.busy = false;
-      button.disabled = false;
-      button.textContent = "查询";
-      renderAll();
+      return;
     }
-    if (autoSelectMoldId) selectMold(autoSelectMoldId);
+
+    const requestId = ++UI.moldSearchRequestId;
+    UI.moldSearching = true;
+    renderMoldOptions();
+    try {
+      const molds = await BomApi.searchMolds(keyword);
+      if (requestId !== UI.moldSearchRequestId) return;
+      UI.molds = molds;
+      UI.moldActiveIndex = molds.length > 0 ? 0 : -1;
+      UI.moldSearchError = molds.length > 0
+        ? ""
+        : "没有找到匹配的模具";
+    } catch (error) {
+      if (requestId !== UI.moldSearchRequestId) return;
+      UI.molds = [];
+      UI.moldSearchError = error.message;
+    } finally {
+      if (requestId === UI.moldSearchRequestId) {
+        UI.moldSearching = false;
+        renderMoldOptions();
+      }
+    }
   }
 
   function init(templates, adapter) {
@@ -979,12 +1151,66 @@
     $("btn-generate-xlsx").addEventListener("click", generateTemporaryFile);
     $("btn-download-xlsx").addEventListener("click", downloadGeneratedFile);
     $("btn-one-click").addEventListener("click", importBom);
-    $("btn-search-mold").addEventListener("click", searchMolds);
-    $("mold-keyword").addEventListener("keydown", (event) => {
-      if (event.key === "Enter") searchMolds();
+    $("btn-toggle-molds").addEventListener("click", () => {
+      if (UI.moldDropdownOpen) {
+        closeMoldDropdown();
+      } else {
+        openMoldDropdown();
+        if (!UI.moldSearching && UI.molds.length === 0) searchMolds();
+      }
     });
-    $("mold-select").addEventListener("change", (event) => {
-      selectMold(event.target.value);
+    $("mold-keyword").addEventListener("focus", () => {
+      openMoldDropdown();
+      if (UI.selectedMoldData && UI.molds.length === 0) {
+        UI.molds = [UI.selectedMoldData];
+        UI.moldActiveIndex = 0;
+        renderMoldOptions();
+      } else if (UI.molds.length === 0 && !UI.moldSearching) {
+        searchMolds();
+      }
+    });
+    $("mold-keyword").addEventListener("input", () => {
+      clearSelectedMoldForTyping();
+      UI.moldSearchRequestId += 1;
+      UI.moldSearching = false;
+      UI.molds = [];
+      UI.moldDropdownOpen = true;
+      UI.moldActiveIndex = -1;
+      UI.moldSearchError = "";
+      renderMoldOptions();
+      scheduleMoldSearch();
+    });
+    $("mold-keyword").addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeMoldDropdown();
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (UI.moldSearching) return;
+        if (!UI.moldDropdownOpen) openMoldDropdown();
+        if (UI.molds.length === 0) {
+          searchMolds();
+          return;
+        }
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        UI.moldActiveIndex = (UI.moldActiveIndex + direction + UI.molds.length) % UI.molds.length;
+        renderMoldOptions();
+        return;
+      }
+      if (event.key === "Enter" && UI.moldDropdownOpen) {
+        event.preventDefault();
+        if (UI.moldSearching) return;
+        if (UI.molds.length > 0) {
+          const index = UI.moldActiveIndex >= 0 ? UI.moldActiveIndex : 0;
+          selectMold(UI.molds[index]);
+        } else {
+          searchMolds();
+        }
+      }
+    });
+    document.addEventListener("mousedown", (event) => {
+      if (!$("mold-combobox").contains(event.target)) closeMoldDropdown();
     });
     if (adapter.onDataChange) {
       adapter.onDataChange(() => loadPreviewData(UI.headerRow));

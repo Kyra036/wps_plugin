@@ -194,6 +194,14 @@
     });
   }
 
+  // 读取当前 BOM 高级导入模板，供上传前检查数据范围和忽略规则。
+  async function getParseConfig(configId) {
+    if (configId === undefined || configId === null || String(configId).trim() === "") {
+      throw new Error("缺少 Excel 解析模板 ID");
+    }
+    return request(`/excelParseConfig/get/${encodeURIComponent(String(configId))}`);
+  }
+
   root.BomApi = {
     DEFAULT_BASE_URL,
     loadConfig,
@@ -203,5 +211,6 @@
     searchMolds,
     listParts,
     uploadBom,
+    getParseConfig,
   };
 })(typeof self !== "undefined" ? self : globalThis);

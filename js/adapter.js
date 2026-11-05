@@ -35,6 +35,14 @@
       });
     }
 
+    getDataRange(headerInfo, _colCount) {
+      const dataStartRow = headerInfo.dataStartRow;
+      return {
+        lastDataRow: dataStartRow + this.rows.length - 1,
+        dataRowCount: this.rows.length,
+      };
+    }
+
     getSheetName() {
       return this.name;
     }
@@ -109,6 +117,47 @@
       return value === undefined ? null : value;
     }
 
+    _isBlankCell(value) {
+      return value === undefined || value === null || String(value).trim() === "";
+    }
+
+    // UsedRange 可能因格式扩展到空白行，从底部向上找到最后一条有效数据。
+    _findLastDataRow(sheet, dataStartRow, candidateLastRow, startColumn, columnCount) {
+      for (let row = candidateLastRow; row >= dataStartRow; row--) {
+        for (let column = 0; column < columnCount; column++) {
+          if (!this._isBlankCell(this._readCell(sheet, row, startColumn + column))) {
+            return row;
+          }
+        }
+      }
+      return dataStartRow - 1;
+    }
+
+    getDataRange(headerInfo, colCount) {
+      const sheet = this._sheet();
+      const used = this._usedRange(sheet);
+      if (!used || !colCount) {
+        return {
+          lastDataRow: headerInfo.dataStartRow - 1,
+          dataRowCount: 0,
+        };
+      }
+
+      const startColumn = Number(used.Column) || 1;
+      const candidateLastRow = used.Row + used.Rows.Count - 1;
+      const lastDataRow = this._findLastDataRow(
+        sheet,
+        headerInfo.dataStartRow,
+        candidateLastRow,
+        startColumn,
+        colCount
+      );
+      return {
+        lastDataRow,
+        dataRowCount: Math.max(0, lastDataRow - headerInfo.dataStartRow + 1),
+      };
+    }
+
     getHeaderInfo(headerRowOverride) {
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
@@ -150,8 +199,9 @@
       if (!used) return [];
 
       const headerInfo = this.getHeaderInfo(headerRow);
-      const lastRow = used.Row + used.Rows.Count - 1;
       const startColumn = Number(used.Column) || 1;
+      const dataRange = this.getDataRange(headerInfo, colCount);
+      const lastRow = dataRange.lastDataRow;
       const limit = Number.isInteger(maxRows) ? Math.max(0, maxRows) : Infinity;
       const dataRows = [];
       for (let row = headerInfo.dataStartRow; row <= lastRow && dataRows.length < limit; row++) {
