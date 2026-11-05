@@ -175,6 +175,25 @@
     return allParts;
   }
 
+  // 将临时标准 XLSX 作为 multipart 文件上传到指定模具。
+  async function uploadBom(file, moldId, excelParseConfigId) {
+    if (!file) throw new Error("缺少待上传的临时 XLSX");
+    if (moldId === undefined || moldId === null || String(moldId).trim() === "") {
+      throw new Error("缺少目标模具 ID");
+    }
+
+    const formData = new FormData();
+    formData.append("file", file, file.name || "wps-bom-import.xlsx");
+    const query = new URLSearchParams({
+      moldId: String(moldId),
+      excelParseConfigId: String(excelParseConfigId),
+    });
+    return request(`/tenant/v2/bom/bomImport?${query.toString()}`, {
+      method: "POST",
+      body: formData,
+    });
+  }
+
   root.BomApi = {
     DEFAULT_BASE_URL,
     loadConfig,
@@ -183,5 +202,6 @@
     normalizeToken,
     searchMolds,
     listParts,
+    uploadBom,
   };
 })(typeof self !== "undefined" ? self : globalThis);

@@ -201,6 +201,13 @@
       position: sticky; left: 0; background: #f8fafc;
       color: var(--text-2); text-align: center;
     }
+    #import-status {
+      margin: 6px 0; padding: 6px;
+      border-radius: 3px; background: #f1f5f9;
+      color: var(--text-2); font-size: 11px; white-space: pre-wrap;
+    }
+    #import-status.ok { background: #f0fdf4; color: var(--ok); }
+    #import-status.error { background: #fef2f2; color: var(--error); }
 
     @media (prefers-reduced-motion: reduce) {
       * { transition: none !important; animation: none !important; }
@@ -287,6 +294,7 @@
       <button class="secondary" id="btn-download-xlsx" type="button" style="width:100%;margin-top:6px">下载临时 XLSX</button>
     </div>
     <button class="primary" id="btn-one-click" disabled>一键导入 BOM</button>
+    <div id="import-status" class="hidden" role="status"></div>
     <div id="import-hint" class="action-hint">请先选择模板和目标模具</div>
   </section>
 

@@ -27,6 +27,8 @@
     generateBusy: false,
     generatedFile: null,
     generatedRows: [],
+    importBusy: false,
+    uploadCompleted: false,
   };
 
   function esc(value) {
@@ -80,10 +82,18 @@
     element.className = message ? (type || "") : "hidden";
   }
 
+  function setImportStatus(message, type) {
+    const element = $("import-status");
+    element.textContent = message || "";
+    element.className = message ? (type || "") : "hidden";
+  }
+
   function resetGeneratedFile() {
     UI.generatedFile = null;
     UI.generatedRows = [];
+    UI.uploadCompleted = false;
     setGenerateStatus("");
+    setImportStatus("");
     renderGeneratedPreview();
   }
 
@@ -514,6 +524,8 @@
     UI.existingPartsLoaded = false;
     UI.existingPartsLoading = false;
     UI.existingPartsRequestId += 1;
+    UI.uploadCompleted = false;
+    setImportStatus("");
     renderMoldOptions();
     renderMoldPartStatus();
     renderExistingPartsPreview();
@@ -521,7 +533,7 @@
     if (UI.selectedMoldId) loadExistingParts(UI.selectedMoldId);
   }
 
-  // 当前步骤只验证连接和目标模具选择，上传入口留到下一步接入。
+  // 只有临时文件、令牌和目标模具都准备好后才允许上传。
   function renderImportState() {
     const button = $("btn-one-click");
     const hint = $("import-hint");
@@ -537,14 +549,19 @@
     else if (missingFields > 0) message = `仍有 ${missingFields} 个 BOM 字段没有源列`;
     else if (!UI.connection.token) message = "请先在开发登录中配置平台令牌";
     else if (!mold) message = "请先查询并选择目标模具";
-    else if (UI.existingPartsLoading) message = "正在读取目标模具已有零件...";
-    else if (UI.existingParts.length > 0) {
-      message = `已选择目标模具：${mold.moldNo || mold.moldName || "未命名模具"}，已有 ${UI.existingParts.length} 个零件`;
-    }
-    else message = `已选择目标模具：${mold.moldNo || mold.moldName || "未命名模具"}`;
+    else if (UI.generateBusy) message = "正在生成新的临时 XLSX...";
+    else if (!UI.generatedFile) message = "请先生成临时 XLSX";
+    else if (UI.uploadCompleted) message = "本次临时文件已上传，请重新生成后再上传";
+    else message = `准备上传到：${mold.moldNo || mold.moldName || "未命名模具"}（不判断重复零件）`;
 
-    button.disabled = true;
-    button.textContent = "一键导入 BOM";
+    button.disabled =
+      !UI.generatedFile ||
+      !UI.connection.token ||
+      !mold ||
+      UI.generateBusy ||
+      UI.uploadCompleted ||
+      UI.importBusy;
+    button.textContent = UI.importBusy ? "正在上传..." : "一键导入 BOM";
     hint.textContent = message;
   }
 
@@ -707,9 +724,12 @@
     if (UI.generateBusy) return;
     clearErrors();
     setValidationStatus("");
+    setImportStatus("");
+    UI.uploadCompleted = false;
     setGenerateStatus("正在读取并校验 BOM...");
     UI.generateBusy = true;
     renderGenerateState();
+    renderImportState();
     try {
       const result = await readAndValidateBom();
       if (result.validation.errors.length > 0) {
@@ -736,14 +756,56 @@
         "ok"
       );
       renderGeneratedPreview();
+      renderImportState();
       toast("临时 XLSX 已生成");
     } catch (error) {
       UI.generatedFile = null;
+      UI.generatedRows = [];
       showError(`临时 XLSX 生成失败：${error.message}`);
       setGenerateStatus("生成失败，请根据错误提示修改后重试", "error");
     } finally {
       UI.generateBusy = false;
       renderGenerateState();
+      renderImportState();
+    }
+  }
+
+  // 直接上传已生成的内存 XLSX；当前版本不判断平台已有重复零件。
+  async function importBom() {
+    if (UI.importBusy) return;
+    const template = currentTemplate();
+    const mold = selectedMold();
+    if (!UI.generatedFile) {
+      showError("请先生成临时 XLSX");
+      return;
+    }
+    if (!template || !mold || !UI.connection.token) {
+      showError("请先选择目标模具并配置平台令牌");
+      return;
+    }
+
+    clearErrors();
+    setImportStatus("正在上传临时 XLSX 到平台...");
+    UI.importBusy = true;
+    renderImportState();
+    try {
+      const result = await BomApi.uploadBom(
+        UI.generatedFile,
+        mold.moldId,
+        template.platform.excelParseConfigId
+      );
+      const count = Array.isArray(result && result.data) ? result.data.length : 0;
+      UI.uploadCompleted = true;
+      setImportStatus(`上传成功：平台返回 ${count} 个新零件 ID`, "ok");
+      toast("BOM 上传成功");
+      await loadExistingParts(mold.moldId);
+    } catch (error) {
+      UI.uploadCompleted = false;
+      showError(`BOM 上传失败：${error.message}`);
+      setImportStatus("上传失败，请根据错误提示处理后重试", "error");
+    } finally {
+      UI.importBusy = false;
+      renderImportState();
     }
   }
 
@@ -824,6 +886,7 @@
     $("btn-validate-bom").addEventListener("click", checkBom);
     $("btn-generate-xlsx").addEventListener("click", generateTemporaryFile);
     $("btn-download-xlsx").addEventListener("click", downloadGeneratedFile);
+    $("btn-one-click").addEventListener("click", importBom);
     $("btn-search-mold").addEventListener("click", searchMolds);
     $("mold-keyword").addEventListener("keydown", (event) => {
       if (event.key === "Enter") searchMolds();
