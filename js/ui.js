@@ -504,9 +504,11 @@
       if (requestId !== UI.existingPartsRequestId) return;
       UI.existingParts = parts;
       UI.existingPartsLoaded = true;
+      return parts;
     } catch (error) {
       if (requestId !== UI.existingPartsRequestId) return;
       showError(`读取已有零件失败：${error.message}`);
+      return null;
     } finally {
       if (requestId === UI.existingPartsRequestId) {
         UI.existingPartsLoading = false;
@@ -798,6 +800,7 @@
     UI.importBusy = true;
     renderImportState();
     try {
+      const beforeCount = UI.existingPartsLoaded ? UI.existingParts.length : null;
       // 未单独生成时，自动完成校验和临时文件生成。
       if (!UI.generatedFile) {
         setImportStatus("正在生成临时 XLSX...");
@@ -812,9 +815,24 @@
       );
       const count = Array.isArray(result && result.data) ? result.data.length : 0;
       UI.uploadCompleted = true;
-      setImportStatus(`上传成功：平台返回 ${count} 个新零件 ID`, "ok");
+      setImportStatus(`上传成功：平台返回 ${count} 个新零件 ID，正在刷新零件清单...`, "ok");
       toast("BOM 上传成功");
       await loadExistingParts(mold.moldId);
+      if (UI.existingPartsLoaded) {
+        const afterCount = UI.existingParts.length;
+        const changeText = beforeCount === null
+          ? `当前共 ${afterCount} 个零件`
+          : `平台零件数 ${beforeCount} → ${afterCount}`;
+        setImportStatus(
+          `上传完成：接口返回 ${count} 个新零件 ID；${changeText}`,
+          "ok"
+        );
+      } else {
+        setImportStatus(
+          `上传接口已成功，但零件清单刷新失败；请稍后手动刷新确认`,
+          "error"
+        );
+      }
     } catch (error) {
       UI.uploadCompleted = false;
       if (error.validationErrors) {
