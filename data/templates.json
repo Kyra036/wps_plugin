@@ -7,6 +7,12 @@
       "description": "对应平台 BOM导入 解析模板。",
       "builtIn": true,
       "version": 1,
+      "platform": {
+        "excelParseConfigId": "2095456118164029441",
+        "sheetName": "BOM",
+        "headerRow": 5,
+        "dataStartRow": 6
+      },
       "fields": [
         {
           "key": "partNo",

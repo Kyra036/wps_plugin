@@ -24,6 +24,9 @@
     connection: { token: "" },
     busy: false,
     validationBusy: false,
+    generateBusy: false,
+    generatedFile: null,
+    generatedRows: [],
   };
 
   function esc(value) {
@@ -69,6 +72,78 @@
     const element = $("validation-status");
     element.textContent = message || "";
     element.className = message ? (type || "") : "hidden";
+  }
+
+  function setGenerateStatus(message, type) {
+    const element = $("generate-status");
+    element.textContent = message || "";
+    element.className = message ? (type || "") : "hidden";
+  }
+
+  function resetGeneratedFile() {
+    UI.generatedFile = null;
+    UI.generatedRows = [];
+    setGenerateStatus("");
+    renderGeneratedPreview();
+  }
+
+  // 页面预览严格模拟临时 XLSX：第 5 行表头，之后逐行展示 BOM 数据。
+  function renderGeneratedPreview() {
+    const panel = $("generated-preview");
+    const table = $("generated-preview-table");
+    table.innerHTML = "";
+    if (!UI.generatedFile) {
+      panel.classList.add("hidden");
+      return;
+    }
+
+    const headers = ["Excel 行", "序号", "名称", "材料", "规格", "数量", "备注", "加工要求"];
+    const keys = [
+      "partNo",
+      "partName",
+      "partMaterial",
+      "partSpecs",
+      "partNum",
+      "partRemark",
+      "partProcessReq",
+    ];
+    const headerRow = document.createElement("tr");
+    headers.forEach((label) => {
+      const cell = document.createElement("th");
+      cell.textContent = label;
+      headerRow.appendChild(cell);
+    });
+    table.appendChild(headerRow);
+
+    const platform = currentTemplate() && currentTemplate().platform;
+    const excelHeaderRow = Number(platform && platform.headerRow) || 5;
+    const headerContent = document.createElement("tr");
+    const headerNumber = document.createElement("td");
+    headerNumber.className = "row-no";
+    headerNumber.textContent = excelHeaderRow;
+    headerContent.appendChild(headerNumber);
+    ["序号", "名称", "材料", "规格（宽*长*高）（MM）", "数量", "备注", "加工要求"]
+      .forEach((value) => {
+        const cell = document.createElement("td");
+        cell.textContent = value;
+        headerContent.appendChild(cell);
+      });
+    table.appendChild(headerContent);
+
+    UI.generatedRows.forEach((row, index) => {
+      const tr = document.createElement("tr");
+      const rowNumber = document.createElement("td");
+      rowNumber.className = "row-no";
+      rowNumber.textContent = excelHeaderRow + index + 1;
+      tr.appendChild(rowNumber);
+      keys.forEach((key) => {
+        const cell = document.createElement("td");
+        cell.textContent = row[key] === undefined || row[key] === null ? "" : String(row[key]);
+        tr.appendChild(cell);
+      });
+      table.appendChild(tr);
+    });
+    panel.classList.remove("hidden");
   }
 
   function currentTemplate() {
@@ -487,6 +562,22 @@
     button.textContent = UI.validationBusy ? "正在检查..." : "检查完整 BOM";
   }
 
+  // 临时文件只依赖当前模板和源表数据，不要求令牌或目标模具。
+  function renderGenerateState() {
+    const button = $("btn-generate-xlsx");
+    const template = currentTemplate();
+    const mapping = template
+      ? Core.autoMatchHeaders(UI.headerInfo ? UI.headerInfo.headers : [], UI.fields)
+      : null;
+    const ready = !!template &&
+      mapping.unmatchedTemplateFields.length === 0 &&
+      UI.totalDataRows > 0;
+    button.disabled = !ready || UI.generateBusy;
+    button.textContent = UI.generateBusy
+      ? "正在生成..."
+      : "生成临时 XLSX（暂不上传）";
+  }
+
   function renderAll() {
     renderSheetInfo();
     renderSourceHeaders();
@@ -498,6 +589,7 @@
     renderMapping();
     renderPreview();
     renderValidationState();
+    renderGenerateState();
     renderImportState();
   }
 
@@ -527,6 +619,7 @@
       UI.previewRows = rows;
       UI.totalDataRows = Math.max(0, lastSheetRow - headerInfo.dataStartRow + 1);
       setValidationStatus("");
+      resetGeneratedFile();
       renderAll();
     } catch (error) {
       if (requestId !== UI.previewRequestId) return;
@@ -558,6 +651,7 @@
     UI.fields = Core.flattenTemplate(template);
     clearErrors();
     setValidationStatus("");
+    resetGeneratedFile();
     renderAll();
     toast("已加载 BOM 模板");
   }
@@ -606,6 +700,67 @@
       UI.validationBusy = false;
       renderValidationState();
     }
+  }
+
+  // 生成内存中的平台标准 XLSX，本函数不会调用平台上传接口。
+  async function generateTemporaryFile() {
+    if (UI.generateBusy) return;
+    clearErrors();
+    setValidationStatus("");
+    setGenerateStatus("正在读取并校验 BOM...");
+    UI.generateBusy = true;
+    renderGenerateState();
+    try {
+      const result = await readAndValidateBom();
+      if (result.validation.errors.length > 0) {
+        showError(result.validation.errors);
+        setGenerateStatus(
+          `无法生成：${result.validation.errors.length} 行 BOM 数据有错误`,
+          "error"
+        );
+        return;
+      }
+
+      const template = currentTemplate();
+      const fileName = `BOM-${Date.now()}.xlsx`;
+      const file = XlsxBuilder.buildBomFile(
+        result.validation.rows,
+        fileName,
+        template.platform
+      );
+      UI.generatedFile = file;
+      UI.generatedRows = result.validation.rows.slice();
+      const sizeKb = Math.max(1, Math.ceil(file.size / 1024));
+      setGenerateStatus(
+        `临时 XLSX 生成成功：${result.validation.rows.length} 行数据，约 ${sizeKb} KB，尚未上传`,
+        "ok"
+      );
+      renderGeneratedPreview();
+      toast("临时 XLSX 已生成");
+    } catch (error) {
+      UI.generatedFile = null;
+      showError(`临时 XLSX 生成失败：${error.message}`);
+      setGenerateStatus("生成失败，请根据错误提示修改后重试", "error");
+    } finally {
+      UI.generateBusy = false;
+      renderGenerateState();
+    }
+  }
+
+  // 只有用户点击下载时才创建本地链接，生成和上传流程不会自动下载文件。
+  function downloadGeneratedFile() {
+    if (!UI.generatedFile) {
+      showError("请先生成临时 XLSX");
+      return;
+    }
+    const url = URL.createObjectURL(UI.generatedFile);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = UI.generatedFile.name || "wps-bom-import.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   // 查询模具时把按钮暂时置为忙碌，避免用户连续点击造成重复请求。
@@ -667,6 +822,8 @@
       if (event.key === "Enter") applyHeaderRow();
     });
     $("btn-validate-bom").addEventListener("click", checkBom);
+    $("btn-generate-xlsx").addEventListener("click", generateTemporaryFile);
+    $("btn-download-xlsx").addEventListener("click", downloadGeneratedFile);
     $("btn-search-mold").addEventListener("click", searchMolds);
     $("mold-keyword").addEventListener("keydown", (event) => {
       if (event.key === "Enter") searchMolds();

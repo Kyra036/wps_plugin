@@ -172,6 +172,35 @@
     }
     #validation-status.ok { background: #f0fdf4; color: var(--ok); }
     #validation-status.error { background: #fef2f2; color: var(--error); }
+    #generate-status {
+      margin: 6px 0; padding: 6px;
+      border-radius: 3px; background: #f1f5f9;
+      color: var(--text-2); font-size: 11px; white-space: pre-wrap;
+    }
+    #generate-status.ok { background: #f0fdf4; color: var(--ok); }
+    #generate-status.error { background: #fef2f2; color: var(--error); }
+    .generated-preview {
+      margin: 6px 0; border-top: 1px dashed #e2e8f0;
+    }
+    .generated-preview-title {
+      margin: 5px 0; color: var(--text-2); font-size: 11px;
+    }
+    .generated-preview-scroll {
+      max-height: 180px; overflow: auto;
+    }
+    table.generated-table {
+      width: max-content; min-width: 100%; border-collapse: collapse; font-size: 10px;
+    }
+    table.generated-table th, table.generated-table td {
+      max-width: 110px; padding: 3px 5px;
+      border: 1px solid #e2e8f0; text-align: left;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    table.generated-table th { background: #f1f5f9; color: var(--text-2); }
+    table.generated-table td.row-no {
+      position: sticky; left: 0; background: #f8fafc;
+      color: var(--text-2); text-align: center;
+    }
 
     @media (prefers-reduced-motion: reduce) {
       * { transition: none !important; animation: none !important; }
@@ -248,6 +277,15 @@
   <section class="section">
     <button class="secondary" id="btn-validate-bom" type="button" disabled style="width:100%">检查完整 BOM</button>
     <div id="validation-status" class="hidden" role="status"></div>
+    <button class="secondary" id="btn-generate-xlsx" type="button" disabled style="width:100%;margin-top:6px">生成临时 XLSX（暂不上传）</button>
+    <div id="generate-status" class="hidden" role="status"></div>
+    <div id="generated-preview" class="generated-preview hidden">
+      <div class="generated-preview-title">临时文件内容预览（表头位于 Excel 第 5 行）</div>
+      <div class="generated-preview-scroll">
+        <table class="generated-table" id="generated-preview-table"></table>
+      </div>
+      <button class="secondary" id="btn-download-xlsx" type="button" style="width:100%;margin-top:6px">下载临时 XLSX</button>
+    </div>
     <button class="primary" id="btn-one-click" disabled>一键导入 BOM</button>
     <div id="import-hint" class="action-hint">请先选择模板和目标模具</div>
   </section>
@@ -258,6 +296,7 @@
   <script src="js/core.js"></script>
   <script src="js/adapter.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/xlsx.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>
 </body>
