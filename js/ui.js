@@ -255,45 +255,11 @@
     }
   }
 
-  // 源表头只显示列字母和表头名称。
-  function renderSourceHeaders() {
-    const list = $("source-headers");
-    const count = $("header-count");
-    const headers = UI.headerInfo && Array.isArray(UI.headerInfo.headers)
-      ? UI.headerInfo.headers
-      : [];
-    count.textContent = ` ${headers.length} 列`;
-    list.innerHTML = "";
-
-    if (headers.length === 0) {
-      list.className = "dim";
-      list.textContent = "当前工作表没有可读取的表头";
-      return;
-    }
-
-    list.className = "";
-    headers.forEach((header, index) => {
-      const chip = document.createElement("span");
-      const label = header.fullLabel || header.label || "";
-      chip.className = "header-chip" + (label ? "" : " empty");
-      chip.title = label;
-
-      const column = document.createElement("span");
-      column.className = "col";
-      column.textContent = header.column || Core.colLetter(index);
-      chip.append(column, document.createTextNode(label || "（空表头）"));
-      list.appendChild(chip);
-    });
-  }
-
   function renderHeaderRowControl() {
     const input = $("source-header-row");
     if (document.activeElement !== input && UI.headerRow) {
       input.value = UI.headerRow;
     }
-    $("source-header-row-hint").textContent = UI.headerRow
-      ? `当前按第 ${UI.headerRow} 行作为源表头，数据从第 ${UI.headerRow + 1} 行开始`
-      : "请输入当前工作表的表头所在行";
   }
 
   // 模板选择只保留当前内置 BOM 模板，默认为“请选择模板”。
@@ -674,7 +640,6 @@
 
   function renderAll() {
     renderSheetInfo();
-    renderSourceHeaders();
     renderHeaderRowControl();
     renderTemplateBar();
     renderMoldOptions();
