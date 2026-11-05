@@ -17,11 +17,14 @@
     molds: [],
     selectedMoldId: "",
     existingParts: [],
+    existingPartsLoaded: false,
     existingPartsLoading: false,
     existingPartsRequestId: 0,
     connection: { token: "" },
     busy: false,
     validationBusy: false,
+    duplicateCheckBusy: false,
+    duplicateComparison: null,
   };
 
   function esc(value) {
@@ -65,6 +68,12 @@
   // BOM 检查结果只保留在页面中，不会发送到平台。
   function setValidationStatus(message, type) {
     const element = $("validation-status");
+    element.textContent = message || "";
+    element.className = message ? (type || "") : "hidden";
+  }
+
+  function setDuplicateStatus(message, type) {
+    const element = $("duplicate-status");
     element.textContent = message || "";
     element.className = message ? (type || "") : "hidden";
   }
@@ -337,6 +346,7 @@
     clearErrors();
     toast(config.token ? "开发令牌已保存" : "请填写平台访问令牌");
     renderImportState();
+    renderDuplicateCheckState();
   }
 
   // 目标模具下方只展示零件总数；读取失败时显示错误，不影响当前工作表预览。
@@ -349,6 +359,10 @@
     }
     if (UI.existingPartsLoading) {
       element.textContent = "正在读取目标模具已有零件...";
+      return;
+    }
+    if (!UI.existingPartsLoaded) {
+      element.textContent = "尚未读取已有零件";
       return;
     }
     if (UI.existingParts.length > 0) {
@@ -390,17 +404,55 @@
     }
   }
 
+  // 重复项只做只读预览，真正的更新或跳过选择在下一步实现。
+  function renderDuplicatePreview() {
+    const element = $("duplicate-preview");
+    element.innerHTML = "";
+    const duplicates = UI.duplicateComparison ? UI.duplicateComparison.duplicates : [];
+    if (duplicates.length === 0) {
+      element.classList.add("hidden");
+      return;
+    }
+
+    element.classList.remove("hidden");
+    duplicates.slice(0, 20).forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "duplicate-item";
+      const partNo = document.createElement("strong");
+      partNo.textContent = item.row.partNo || "（无编号）";
+      const detail = document.createElement("span");
+      detail.textContent =
+        `当前：${item.row.partName || "无名称"}；平台已有：${item.existing.partName || "无名称"}`;
+      row.append(partNo, detail);
+      element.appendChild(row);
+    });
+    if (duplicates.length > 20) {
+      const more = document.createElement("div");
+      more.className = "existing-part-more";
+      more.textContent = `还有 ${duplicates.length - 20} 个重复零件未显示`;
+      element.appendChild(more);
+    }
+  }
+
+  function resetDuplicateComparison() {
+    UI.duplicateComparison = null;
+    setDuplicateStatus("");
+    renderDuplicatePreview();
+  }
+
   // 只调用查询接口读取零件，本函数不包含新增、更新或删除操作。
   async function loadExistingParts(moldId) {
     const requestId = ++UI.existingPartsRequestId;
     UI.existingPartsLoading = true;
     UI.existingParts = [];
+    UI.existingPartsLoaded = false;
     renderMoldPartStatus();
     renderExistingPartsPreview();
     try {
       const parts = await BomApi.listParts(moldId);
       if (requestId !== UI.existingPartsRequestId) return;
       UI.existingParts = parts;
+      UI.existingPartsLoaded = true;
     } catch (error) {
       if (requestId !== UI.existingPartsRequestId) return;
       showError(`读取已有零件失败：${error.message}`);
@@ -410,6 +462,7 @@
         renderMoldPartStatus();
         renderExistingPartsPreview();
         renderImportState();
+        renderDuplicateCheckState();
       }
     }
   }
@@ -418,12 +471,15 @@
   function selectMold(moldId) {
     UI.selectedMoldId = moldId || "";
     UI.existingParts = [];
+    UI.existingPartsLoaded = false;
     UI.existingPartsLoading = false;
     UI.existingPartsRequestId += 1;
+    resetDuplicateComparison();
     renderMoldOptions();
     renderMoldPartStatus();
     renderExistingPartsPreview();
     renderImportState();
+    renderDuplicateCheckState();
     if (UI.selectedMoldId) loadExistingParts(UI.selectedMoldId);
   }
 
@@ -468,6 +524,23 @@
     button.textContent = UI.validationBusy ? "正在检查..." : "检查完整 BOM";
   }
 
+  // 重复检查需要模板、BOM 数据、平台令牌、目标模具和已有零件明细。
+  function renderDuplicateCheckState() {
+    const button = $("btn-check-duplicates");
+    const template = currentTemplate();
+    const mapping = template
+      ? Core.autoMatchHeaders(UI.headerInfo ? UI.headerInfo.headers : [], UI.fields)
+      : null;
+    const ready = !!template &&
+      mapping.unmatchedTemplateFields.length === 0 &&
+      UI.totalDataRows > 0 &&
+      !!UI.connection.token &&
+      !!selectedMold() &&
+      UI.existingPartsLoaded;
+    button.disabled = !ready || UI.duplicateCheckBusy;
+    button.textContent = UI.duplicateCheckBusy ? "正在检查重复..." : "检查重复零件";
+  }
+
   function renderAll() {
     renderSheetInfo();
     renderSourceHeaders();
@@ -478,6 +551,7 @@
     renderMapping();
     renderPreview();
     renderValidationState();
+    renderDuplicateCheckState();
     renderImportState();
   }
 
@@ -498,6 +572,7 @@
       UI.previewRows = rows;
       UI.totalDataRows = Math.max(0, info.rowCount - (headerInfo.headerRows || 1));
       setValidationStatus("");
+      resetDuplicateComparison();
       renderAll();
     } catch (error) {
       if (requestId !== UI.previewRequestId) return;
@@ -513,6 +588,7 @@
     UI.fields = Core.flattenTemplate(template);
     clearErrors();
     setValidationStatus("");
+    resetDuplicateComparison();
     renderAll();
     toast("已加载 BOM 模板");
   }
@@ -562,6 +638,58 @@
     }
   }
 
+  // 这一步只计算新增和重复数量，不会调用 bomImport 或 updateMoldPart。
+  async function checkDuplicateParts() {
+    if (UI.duplicateCheckBusy) return;
+    const mold = selectedMold();
+    if (!mold || !UI.existingPartsLoaded) {
+      showError("请先选择目标模具并等待已有零件读取完成");
+      return;
+    }
+
+    clearErrors();
+    setValidationStatus("");
+    resetDuplicateComparison();
+    setDuplicateStatus("正在读取 BOM 并比较重复零件...");
+    UI.duplicateCheckBusy = true;
+    renderDuplicateCheckState();
+    try {
+      const result = await readAndValidateBom();
+      if (result.validation.errors.length > 0) {
+        showError(result.validation.errors);
+        setDuplicateStatus(
+          `无法检查重复：${result.validation.errors.length} 行 BOM 数据有错误`,
+          "error"
+        );
+        return;
+      }
+
+      const comparison = Core.findPartDuplicates(
+        result.validation.rows,
+        UI.existingParts
+      );
+      UI.duplicateComparison = comparison;
+      if (comparison.duplicates.length > 0) {
+        setDuplicateStatus(
+          `检查完成：将新增 ${comparison.newRows.length} 个，重复 ${comparison.duplicates.length} 个`,
+          "warning"
+        );
+      } else {
+        setDuplicateStatus(
+          `检查完成：${comparison.newRows.length} 个零件均可新增，没有重复`,
+          "ok"
+        );
+      }
+      renderDuplicatePreview();
+    } catch (error) {
+      showError(`重复零件检查失败：${error.message}`);
+      setDuplicateStatus("检查失败，请根据错误提示修改后重试", "error");
+    } finally {
+      UI.duplicateCheckBusy = false;
+      renderDuplicateCheckState();
+    }
+  }
+
   // 查询模具时把按钮暂时置为忙碌，避免用户连续点击造成重复请求。
   async function searchMolds() {
     const keyword = $("mold-keyword").value.trim();
@@ -576,8 +704,10 @@
     UI.busy = true;
     UI.selectedMoldId = "";
     UI.existingParts = [];
+    UI.existingPartsLoaded = false;
     UI.existingPartsLoading = false;
     UI.existingPartsRequestId += 1;
+    resetDuplicateComparison();
     button.disabled = true;
     button.textContent = "查询中";
     $("mold-select").disabled = true;
@@ -616,6 +746,7 @@
     });
     $("btn-save-token").addEventListener("click", saveToken);
     $("btn-validate-bom").addEventListener("click", checkBom);
+    $("btn-check-duplicates").addEventListener("click", checkDuplicateParts);
     $("btn-search-mold").addEventListener("click", searchMolds);
     $("mold-keyword").addEventListener("keydown", (event) => {
       if (event.key === "Enter") searchMolds();
