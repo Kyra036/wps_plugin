@@ -68,7 +68,7 @@
       .replace(/[()（）\[\]【】/\\_\-·.,，。:%％]/g, "");
   }
 
-  // 自动匹配只建立一对一关系，后续手工映射会在下一阶段补充。
+  // 自动匹配只建立一对一关系，作为手动列选择的初始值。
   function autoMatchHeaders(sourceHeaders, fields) {
     const candidates = [];
     (sourceHeaders || []).forEach((header, headerIndex) => {
@@ -144,22 +144,55 @@
     return "text";
   }
 
-  // 按字段映射把源表整行转换为固定字段对象，未匹配的源列会直接忽略。
-  function buildMappedRows(matches, rows, fields) {
-    const sourceIndexByField = new Map();
-    (matches || []).forEach((match) => {
-      if (match && match.fieldId && Number.isInteger(match.headerIndex)) {
-        sourceIndexByField.set(match.fieldId, match.headerIndex);
+  // 校验手动映射：字段不能缺列，同一 Excel 列也不能分配给多个字段。
+  function resolveFieldMapping(sourceHeaders, fields, columnIndexByFieldId) {
+    const headers = sourceHeaders || [];
+    const mapping = columnIndexByFieldId || {};
+    const usedColumns = new Map();
+    const duplicateColumns = new Set();
+
+    const fieldMappings = (fields || []).map((field) => {
+      const rawIndex = mapping[field.id];
+      const numericIndex = rawIndex === "" || rawIndex === undefined || rawIndex === null
+        ? NaN
+        : Number(rawIndex);
+      const headerIndex = Number.isInteger(numericIndex) &&
+        numericIndex >= 0 &&
+        numericIndex < headers.length
+        ? numericIndex
+        : null;
+
+      if (headerIndex !== null) {
+        if (usedColumns.has(headerIndex)) duplicateColumns.add(headerIndex);
+        else usedColumns.set(headerIndex, field.id);
       }
+
+      return {
+        fieldId: field.id,
+        field,
+        headerIndex,
+        header: headerIndex === null ? null : headers[headerIndex],
+      };
     });
 
+    const missingFields = fieldMappings.filter((item) => item.headerIndex === null);
+    return {
+      fieldMappings,
+      matchedCount: fieldMappings.length - missingFields.length,
+      missingFields,
+      duplicateColumns: Array.from(duplicateColumns),
+      valid: missingFields.length === 0 && duplicateColumns.size === 0,
+    };
+  }
+
+  // 按字段映射把源表整行转换为固定字段对象，未选择列时该字段为空。
+  function buildMappedRows(fieldMappings, rows) {
     return (rows || []).map((row, rowIndex) => {
       const record = { _rowIndex: rowIndex };
-      (fields || []).forEach((field) => {
-        const sourceIndex = sourceIndexByField.get(field.id);
-        record[field.key] = sourceIndex === undefined
+      (fieldMappings || []).forEach((mapping) => {
+        record[mapping.field.key] = mapping.headerIndex === null
           ? null
-          : convertCell(row[sourceIndex]);
+          : convertCell(row[mapping.headerIndex]);
       });
       return record;
     });
@@ -238,6 +271,7 @@
     flattenTemplate,
     normalizeHeader,
     autoMatchHeaders,
+    resolveFieldMapping,
     convertCell,
     classifyCell,
     buildMappedRows,

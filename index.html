@@ -32,6 +32,17 @@
       margin-bottom: 6px; color: var(--text-2); font-size: 13px;
     }
     .section h2 span { font-weight: 400; }
+    .section-title-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      margin-bottom: 6px;
+    }
+    .section-title-row h2 { margin-bottom: 0; }
+    .text-button {
+      padding: 2px 6px; border: 0; border-radius: 3px;
+      background: transparent; color: var(--primary);
+      font-size: 11px; cursor: pointer;
+    }
+    .text-button:hover { background: #eff6ff; }
 
     #error-summary {
       margin-bottom: 8px; padding: 6px 8px;
@@ -106,19 +117,15 @@
       border-top: 1px solid var(--border);
     }
     .mapping-row {
-      display: grid; grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr);
-      align-items: center; gap: 4px; padding: 5px 0;
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+      align-items: center; gap: 8px; padding: 5px 0;
       border-bottom: 1px dashed #e2e8f0; font-size: 11px;
     }
     .mapping-row.unmatched { background: #fef2f2; }
-    .mapping-source, .mapping-target { min-width: 0; overflow-wrap: anywhere; }
-    .mapping-source .col {
-      margin-right: 4px; color: var(--primary);
-      font-family: Consolas, monospace; font-weight: 600;
-    }
+    .mapping-target { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
     .mapping-target .group { color: var(--text-2); }
-    .mapping-arrow { color: var(--text-2); text-align: center; }
     .mapping-row.unmatched .mapping-target { color: var(--error); }
+    .mapping-select { min-width: 0; padding: 4px 5px; font-size: 11px; }
     .mapping-hint, .action-hint {
       margin-top: 5px; color: var(--text-2); font-size: 10px;
     }
@@ -219,7 +226,10 @@
 
   <!-- 当前工作表只读信息 -->
   <section class="section">
-    <h2>当前工作表</h2>
+    <div class="section-title-row">
+      <h2>当前工作表</h2>
+      <button class="text-button" id="btn-reload-page" type="button" title="重新加载最新插件代码">刷新插件</button>
+    </div>
     <div id="sheet-info" class="dim">正在读取工作表信息...</div>
   </section>
 
@@ -272,6 +282,7 @@
     <h2>字段映射 <span id="mapping-stats" class="dim"></span></h2>
     <div id="mapping-list"></div>
     <div id="mapping-hint" class="mapping-hint"></div>
+    <button class="secondary" id="btn-auto-map" type="button" style="width:100%;margin-top:6px">重新按表头名称自动匹配</button>
   </section>
 
   <!-- 前 20 行数据预览 -->

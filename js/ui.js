@@ -8,6 +8,7 @@
   const UI = {
     templates: [],
     fields: [],
+    mappingByField: {},
     currentTemplateId: "",
     adapter: null,
     headerInfo: null,
@@ -164,6 +165,67 @@
     return UI.molds.find((mold) => String(mold.moldId) === String(UI.selectedMoldId)) || null;
   }
 
+  // 当前映射完全以 UI.mappingByField 为准，自动匹配只负责初始化它。
+  function currentFieldMapping() {
+    return Core.resolveFieldMapping(
+      UI.headerInfo ? UI.headerInfo.headers : [],
+      UI.fields,
+      UI.mappingByField
+    );
+  }
+
+  function applyAutoMapping() {
+    const result = Core.autoMatchHeaders(
+      UI.headerInfo ? UI.headerInfo.headers : [],
+      UI.fields
+    );
+    const nextMapping = {};
+    result.matches.forEach((match) => {
+      if (match.fieldId && Number.isInteger(match.headerIndex)) {
+        nextMapping[match.fieldId] = match.headerIndex;
+      }
+    });
+    UI.mappingByField = nextMapping;
+  }
+
+  // 手动选择时保持一对一，若该列已分配给其它字段则自动移除旧选择。
+  function updateManualMapping(fieldId, value) {
+    clearErrors();
+    setValidationStatus("");
+    resetGeneratedFile();
+    if (value === "") {
+      delete UI.mappingByField[fieldId];
+    } else {
+      const sourceIndex = Number(value);
+      Object.keys(UI.mappingByField).forEach((otherFieldId) => {
+        if (
+          otherFieldId !== fieldId &&
+          Number(UI.mappingByField[otherFieldId]) === sourceIndex
+        ) {
+          delete UI.mappingByField[otherFieldId];
+        }
+      });
+      UI.mappingByField[fieldId] = sourceIndex;
+    }
+    renderMapping();
+    renderValidationState();
+    renderGenerateState();
+    renderImportState();
+  }
+
+  function useAutomaticMapping() {
+    if (UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy) return;
+    clearErrors();
+    setValidationStatus("");
+    resetGeneratedFile();
+    applyAutoMapping();
+    renderMapping();
+    renderValidationState();
+    renderGenerateState();
+    renderImportState();
+    toast("已重新按表头名称自动匹配");
+  }
+
   function formatValue(value) {
     if (value instanceof Date) {
       return Number.isNaN(value.getTime()) ? "" : value.toISOString().slice(0, 10);
@@ -248,11 +310,11 @@
     select.value = UI.currentTemplateId;
     select.disabled = UI.busy;
     $("tpl-hint").textContent = currentTemplate()
-      ? "自动匹配当前源表头与 BOM 字段"
+      ? "自动匹配后，可在字段映射中手动选择 Excel 列"
       : "选择模板后开始自动匹配";
   }
 
-  // 自动匹配结果只读展示，真正上传时按这组匹配关系生成平台文件。
+  // 左边固定平台字段，右边手动选择 Excel 列；自动匹配只是初始选择。
   function renderMapping() {
     const section = $("mapping-section");
     const list = $("mapping-list");
@@ -266,55 +328,71 @@
       return;
     }
 
-    const result = Core.autoMatchHeaders(
-      UI.headerInfo ? UI.headerInfo.headers : [],
-      UI.fields
-    );
+    const headers = UI.headerInfo ? UI.headerInfo.headers : [];
+    const result = currentFieldMapping();
     section.classList.remove("hidden");
-    stats.textContent = `${result.matchedCount}/${result.matches.length} 列已匹配`;
+    $("btn-auto-map").disabled =
+      UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy;
+    stats.textContent = `${result.matchedCount}/${UI.fields.length} 个字段已指定`;
 
-    result.matches.forEach((match) => {
+    result.fieldMappings.forEach((mapping) => {
       const row = document.createElement("div");
-      row.className = "mapping-row" + (match.field ? "" : " unmatched");
-      row.title = match.reason;
-
-      const source = document.createElement("span");
-      source.className = "mapping-source";
-      const column = document.createElement("span");
-      column.className = "col";
-      column.textContent = match.header.column || Core.colLetter(match.headerIndex);
-      source.append(column, document.createTextNode(
-        match.header.fullLabel || match.header.label || ""
-      ));
-
-      const arrow = document.createElement("span");
-      arrow.className = "mapping-arrow";
-      arrow.textContent = "→";
-
       const target = document.createElement("span");
       target.className = "mapping-target";
-      if (match.field) {
+      if (mapping.field) {
         const group = document.createElement("span");
         group.className = "group";
-        group.textContent = match.field.groupLabels.length
-          ? `${match.field.groupLabels.join(" / ")} / `
+        group.textContent = mapping.field.groupLabels.length
+          ? `${mapping.field.groupLabels.join(" / ")} / `
           : "";
-        target.append(group, document.createTextNode(match.field.label));
+        target.append(group, document.createTextNode(mapping.field.label));
       } else {
-        target.textContent = "未匹配";
+        target.textContent = "未命名字段";
       }
 
-      row.append(source, arrow, target);
+      const select = document.createElement("select");
+      select.className = "mapping-select";
+      select.dataset.fieldId = mapping.fieldId;
+      select.disabled =
+        UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy;
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = "请选择 Excel 列";
+      select.appendChild(emptyOption);
+
+      headers.forEach((header, headerIndex) => {
+        const option = document.createElement("option");
+        const column = header.column || Core.colLetter(headerIndex);
+        const label = header.fullLabel || header.label || "（空表头）";
+        option.value = String(headerIndex);
+        option.textContent = `${column}  ${label}`;
+        select.appendChild(option);
+      });
+
+      select.value = mapping.headerIndex === null ? "" : String(mapping.headerIndex);
+      select.addEventListener("change", (event) => {
+        updateManualMapping(mapping.fieldId, event.target.value);
+      });
+
+      const duplicate = mapping.headerIndex !== null &&
+        result.duplicateColumns.includes(mapping.headerIndex);
+      if (mapping.headerIndex === null || duplicate) row.className = "mapping-row unmatched";
+      else row.className = "mapping-row";
+
+      row.append(target, select);
       list.appendChild(row);
     });
 
-    const unmatchedSourceCount = result.matches.length - result.matchedCount;
     const messages = [];
-    if (unmatchedSourceCount > 0) messages.push(`${unmatchedSourceCount} 个源表头未匹配`);
-    if (result.unmatchedTemplateFields.length > 0) {
-      messages.push(`${result.unmatchedTemplateFields.length} 个 BOM 字段没有源列`);
+    if (result.duplicateColumns.length > 0) {
+      messages.push("同一 Excel 列不能指定给多个字段");
     }
-    hint.textContent = messages.length ? messages.join("；") : "全部源表头已自动匹配";
+    if (result.missingFields.length > 0) {
+      messages.push(`还有 ${result.missingFields.length} 个字段未选择 Excel 列`);
+    }
+    hint.textContent = messages.length
+      ? messages.join("；")
+      : "全部字段已指定，可手动调整右侧列";
   }
 
   // 只预览前 20 行，避免大表格一次性渲染过多 DOM。
@@ -540,15 +618,14 @@
     const button = $("btn-one-click");
     const hint = $("import-hint");
     const template = currentTemplate();
-    const mapping = template
-      ? Core.autoMatchHeaders(UI.headerInfo ? UI.headerInfo.headers : [], UI.fields)
-      : null;
-    const missingFields = mapping ? mapping.unmatchedTemplateFields.length : UI.fields.length;
+    const mapping = template ? currentFieldMapping() : null;
+    const missingFields = mapping ? mapping.missingFields.length : UI.fields.length;
     const mold = selectedMold();
 
     let message = "";
     if (!template) message = "请先选择 BOM 模板";
-    else if (missingFields > 0) message = `仍有 ${missingFields} 个 BOM 字段没有源列`;
+    else if (missingFields > 0) message = `仍有 ${missingFields} 个字段未选择 Excel 列`;
+    else if (mapping.duplicateColumns.length > 0) message = "同一 Excel 列不能指定给多个字段";
     else if (!UI.connection.token) message = "请先在开发登录中配置平台令牌";
     else if (!mold) message = "请先查询并选择目标模具";
     else if (UI.generateBusy) message = "正在生成新的临时 XLSX...";
@@ -573,11 +650,9 @@
   function renderValidationState() {
     const button = $("btn-validate-bom");
     const template = currentTemplate();
-    const mapping = template
-      ? Core.autoMatchHeaders(UI.headerInfo ? UI.headerInfo.headers : [], UI.fields)
-      : null;
+    const mapping = template ? currentFieldMapping() : null;
     const ready = !!template &&
-      mapping.unmatchedTemplateFields.length === 0 &&
+      mapping.valid &&
       UI.totalDataRows > 0;
     button.disabled = !ready || UI.validationBusy;
     button.textContent = UI.validationBusy ? "正在检查..." : "检查完整 BOM";
@@ -587,11 +662,9 @@
   function renderGenerateState() {
     const button = $("btn-generate-xlsx");
     const template = currentTemplate();
-    const mapping = template
-      ? Core.autoMatchHeaders(UI.headerInfo ? UI.headerInfo.headers : [], UI.fields)
-      : null;
+    const mapping = template ? currentFieldMapping() : null;
     const ready = !!template &&
-      mapping.unmatchedTemplateFields.length === 0 &&
+      mapping.valid &&
       UI.totalDataRows > 0;
     button.disabled = !ready || UI.generateBusy || UI.importBusy;
     button.textContent = UI.generateBusy
@@ -639,6 +712,7 @@
       UI.headerRow = headerInfo.headerRow || headerRow;
       UI.previewRows = rows;
       UI.totalDataRows = Math.max(0, lastSheetRow - headerInfo.dataStartRow + 1);
+      applyAutoMapping();
       setValidationStatus("");
       resetGeneratedFile();
       renderAll();
@@ -670,6 +744,7 @@
     if (!template) return;
     UI.currentTemplateId = template.id;
     UI.fields = Core.flattenTemplate(template);
+    applyAutoMapping();
     clearErrors();
     setValidationStatus("");
     resetGeneratedFile();
@@ -679,19 +754,19 @@
 
   // 读取全部源行并完成校验；该函数不调用任何平台写接口。
   async function readAndValidateBom() {
-    const mapping = Core.autoMatchHeaders(
-      UI.headerInfo ? UI.headerInfo.headers : [],
-      UI.fields
-    );
-    if (mapping.unmatchedTemplateFields.length > 0) {
-      throw new Error(`仍有 ${mapping.unmatchedTemplateFields.length} 个 BOM 字段没有源列`);
+    const mapping = currentFieldMapping();
+    if (mapping.missingFields.length > 0) {
+      throw new Error(`仍有 ${mapping.missingFields.length} 个字段未选择 Excel 列`);
+    }
+    if (mapping.duplicateColumns.length > 0) {
+      throw new Error("同一 Excel 列不能指定给多个字段");
     }
     const sourceRows = await UI.adapter.readRows(
       UI.headerInfo.headers.length,
       Number.MAX_SAFE_INTEGER,
       UI.headerRow
     );
-    const mappedRows = Core.buildMappedRows(mapping.matches, sourceRows, UI.fields);
+    const mappedRows = Core.buildMappedRows(mapping.fieldMappings, sourceRows);
     const validation = Core.validateImportRows(mappedRows, UI.headerInfo.dataStartRow);
     return { sourceRows, mappedRows, validation };
   }
@@ -913,9 +988,11 @@
     UI.templates = templates;
     UI.adapter = adapter;
 
+    $("btn-reload-page").addEventListener("click", () => window.location.reload());
     $("tpl-select").addEventListener("change", (event) => {
       if (event.target.value) activateTemplate(event.target.value);
     });
+    $("btn-auto-map").addEventListener("click", useAutomaticMapping);
     $("btn-save-token").addEventListener("click", saveToken);
     $("btn-apply-header-row").addEventListener("click", applyHeaderRow);
     $("source-header-row").addEventListener("keydown", (event) => {
