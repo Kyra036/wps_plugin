@@ -2,6 +2,7 @@
   "version": "1.0",
   "mockSheet": {
     "name": "BOM",
+    "headerRow": 5,
     "headers": [
       "序号",
       "名称",

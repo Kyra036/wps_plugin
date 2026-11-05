@@ -232,29 +232,6 @@
     return { rows: validRows, errors };
   }
 
-  // 按去掉首尾空格后的零件编号匹配；后端当前也以编号和属性组合识别重复。
-  function findPartDuplicates(importRows, existingParts) {
-    const existingByPartNo = new Map();
-    (existingParts || []).forEach((part) => {
-      const partNo = part && part.partNo !== undefined && part.partNo !== null
-        ? String(part.partNo).trim()
-        : "";
-      if (partNo && !existingByPartNo.has(partNo)) existingByPartNo.set(partNo, part);
-    });
-
-    const duplicates = [];
-    const newRows = [];
-    (importRows || []).forEach((row) => {
-      const partNo = row && row.partNo !== undefined && row.partNo !== null
-        ? String(row.partNo).trim()
-        : "";
-      const existing = existingByPartNo.get(partNo);
-      if (existing) duplicates.push({ row, existing });
-      else newRows.push(row);
-    });
-    return { duplicates, newRows };
-  }
-
   return {
     colLetter,
     flattenFields,
@@ -265,6 +242,5 @@
     classifyCell,
     buildMappedRows,
     validateImportRows,
-    findPartDuplicates,
   };
 });

@@ -19,11 +19,12 @@
     constructor(mockSheet) {
       this.isMock = true;
       this.name = mockSheet.name || "Sheet1";
+      this.headerRow = Number(mockSheet.headerRow) || 1;
       this.headers = (mockSheet.headers || []).slice();
       this.rows = (mockSheet.rows || []).map((row) => row.slice());
     }
 
-    async readRows(colCount, maxRows) {
+    async readRows(colCount, maxRows, _headerRow) {
       const limit = Number.isInteger(maxRows) ? Math.max(0, maxRows) : this.rows.length;
       return this.rows.slice(0, limit).map((row) => {
         const values = [];
@@ -38,9 +39,14 @@
       return this.name;
     }
 
-    getHeaderInfo() {
+    // 浏览器 Mock 只在配置的表头行返回真实表头，便于验证指定行功能。
+    getHeaderInfo(headerRow) {
+      const targetRow = Number(headerRow) || this.headerRow;
+      const sameRow = targetRow === this.headerRow;
       const headers = this.headers.map((label, index) => {
-        const labelText = label === null || label === undefined ? "" : String(label).trim();
+        const labelText = sameRow && label !== null && label !== undefined
+          ? String(label).trim()
+          : "";
         return {
           label: labelText,
           fullLabel: labelText,
@@ -49,11 +55,21 @@
           column: columnLetter(index),
         };
       });
-      return { mode: "single", headerRows: 1, dataStartRow: 2, headers };
+      return {
+        mode: "single",
+        headerRows: 1,
+        headerRow: targetRow,
+        dataStartRow: targetRow + 1,
+        headers,
+      };
     }
 
     getSourceHeaders() {
       return this.getHeaderInfo().headers.map((header) => header.fullLabel);
+    }
+
+    getDefaultHeaderRow() {
+      return this.headerRow;
     }
 
     getSheetInfo() {
@@ -61,7 +77,7 @@
         name: this.name,
         startRow: 1,
         startColumn: 1,
-        rowCount: 1 + this.rows.length,
+        rowCount: this.headerRow + this.rows.length,
         columnCount: Math.max(
           this.headers.length,
           ...this.rows.map((row) => row.length),
@@ -93,14 +109,18 @@
       return value === undefined ? null : value;
     }
 
-    getHeaderInfo() {
+    getHeaderInfo(headerRowOverride) {
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
       if (!used) {
-        return { mode: "empty", headerRows: 0, dataStartRow: 1, headers: [] };
+        return { mode: "empty", headerRows: 0, headerRow: 1, dataStartRow: 1, headers: [] };
       }
 
-      const headerRow = Number(used.Row) || 1;
+      const firstUsedRow = Number(used.Row) || 1;
+      const requestedRow = Number(headerRowOverride);
+      const headerRow = Number.isInteger(requestedRow) && requestedRow > 0
+        ? requestedRow
+        : firstUsedRow;
       const startColumn = Number(used.Column) || 1;
       const columnCount = Number(used.Columns && used.Columns.Count) || 0;
       const headers = [];
@@ -115,15 +135,21 @@
           column: columnLetter(startColumn - 1 + offset),
         });
       }
-      return { mode: "single", headerRows: 1, dataStartRow: headerRow + 1, headers };
+      return {
+        mode: "single",
+        headerRows: 1,
+        headerRow,
+        dataStartRow: headerRow + 1,
+        headers,
+      };
     }
 
-    async readRows(colCount, maxRows) {
+    async readRows(colCount, maxRows, headerRow) {
       const sheet = this._sheet();
       const used = this._usedRange(sheet);
       if (!used) return [];
 
-      const headerInfo = this.getHeaderInfo();
+      const headerInfo = this.getHeaderInfo(headerRow);
       const lastRow = used.Row + used.Rows.Count - 1;
       const startColumn = Number(used.Column) || 1;
       const limit = Number.isInteger(maxRows) ? Math.max(0, maxRows) : Infinity;
@@ -147,6 +173,11 @@
 
     getSourceHeaders() {
       return this.getHeaderInfo().headers.map((header) => header.fullLabel);
+    }
+
+    getDefaultHeaderRow() {
+      const used = this._usedRange(this._sheet());
+      return used ? (Number(used.Row) || 1) : 1;
     }
 
     getSheetInfo() {
