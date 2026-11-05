@@ -17,6 +17,7 @@
         {
           "key": "partNo",
           "label": "零件编号",
+          "required": true,
           "visible": true,
           "builtIn": true,
           "aliases": ["序号", "料号", "零件号"]
@@ -24,6 +25,7 @@
         {
           "key": "partName",
           "label": "零件名称",
+          "required": true,
           "visible": true,
           "builtIn": true,
           "aliases": ["名称", "品名", "物料名称"]
@@ -31,6 +33,7 @@
         {
           "key": "partMaterial",
           "label": "材质",
+          "required": false,
           "visible": true,
           "builtIn": true,
           "aliases": ["材料"]
@@ -38,6 +41,7 @@
         {
           "key": "partSpecs",
           "label": "实际规格",
+          "required": false,
           "visible": true,
           "builtIn": true,
           "aliases": ["规格", "规格（宽*长*高）（MM）"]
@@ -45,6 +49,7 @@
         {
           "key": "partNum",
           "label": "数量",
+          "required": false,
           "visible": true,
           "builtIn": true,
           "aliases": ["齐套数量"]
@@ -52,6 +57,7 @@
         {
           "key": "partRemark",
           "label": "备注",
+          "required": false,
           "visible": true,
           "builtIn": true,
           "aliases": []
@@ -59,6 +65,7 @@
         {
           "key": "partProcessReq",
           "label": "加工要求",
+          "required": false,
           "visible": true,
           "builtIn": true,
           "aliases": ["加工说明"]

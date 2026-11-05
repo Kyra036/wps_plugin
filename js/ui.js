@@ -299,7 +299,7 @@
     section.classList.remove("hidden");
     $("btn-auto-map").disabled =
       UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy;
-    stats.textContent = `${result.matchedCount}/${UI.fields.length} 个字段已指定`;
+    stats.textContent = `${result.assignedCount}/${UI.fields.length} 个字段已指定`;
 
     result.fieldMappings.forEach((mapping) => {
       const row = document.createElement("div");
@@ -311,7 +311,8 @@
         group.textContent = mapping.field.groupLabels.length
           ? `${mapping.field.groupLabels.join(" / ")} / `
           : "";
-        target.append(group, document.createTextNode(mapping.field.label));
+        const requiredText = mapping.field.required ? "" : "（可选）";
+        target.append(group, document.createTextNode(`${mapping.field.label}${requiredText}`));
       } else {
         target.textContent = "未命名字段";
       }
@@ -323,7 +324,9 @@
         UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy;
       const emptyOption = document.createElement("option");
       emptyOption.value = "";
-      emptyOption.textContent = "请选择 Excel 列";
+      emptyOption.textContent = mapping.field.required
+        ? "请选择 Excel 列"
+        : "不选择，字段留空";
       select.appendChild(emptyOption);
 
       headers.forEach((header, headerIndex) => {
@@ -354,11 +357,20 @@
       messages.push("同一 Excel 列不能指定给多个字段");
     }
     if (result.missingFields.length > 0) {
-      messages.push(`还有 ${result.missingFields.length} 个字段未选择 Excel 列`);
+      messages.push(`还有 ${result.missingFields.length} 个必填字段未选择 Excel 列`);
+    }
+    if (result.valid && result.unmappedFields.length > 0) {
+      const optionalNames = result.unmappedFields
+        .map((item) => item.field.label)
+        .join("、");
+      messages.push(`可选项未指定：${optionalNames}，将留空`);
+      if (result.unmappedFields.some((item) => item.field.key === "partNum")) {
+        messages.push("数量未指定时按 1 导入");
+      }
     }
     hint.textContent = messages.length
       ? messages.join("；")
-      : "全部字段已指定，可手动调整右侧列";
+      : "必填和可选字段均已指定，可手动调整右侧列";
   }
 
   // 只预览前 20 行，避免大表格一次性渲染过多 DOM。

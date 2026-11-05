@@ -37,6 +37,8 @@
           labelPath,
           groupLabels: labelPath.slice(0, -1),
           aliases: Array.isArray(field.aliases) ? field.aliases.slice() : [],
+          required: field.required !== false,
+          defaultValue: field.defaultValue,
         });
       }
     }
@@ -175,10 +177,13 @@
       };
     });
 
-    const missingFields = fieldMappings.filter((item) => item.headerIndex === null);
+    const unmappedFields = fieldMappings.filter((item) => item.headerIndex === null);
+    const missingFields = unmappedFields.filter((item) => item.field.required);
     return {
       fieldMappings,
-      matchedCount: fieldMappings.length - missingFields.length,
+      matchedCount: fieldMappings.length - unmappedFields.length,
+      assignedCount: fieldMappings.length - unmappedFields.length,
+      unmappedFields,
       missingFields,
       duplicateColumns: Array.from(duplicateColumns),
       valid: missingFields.length === 0 && duplicateColumns.size === 0,
@@ -190,9 +195,12 @@
     return (rows || []).map((row, rowIndex) => {
       const record = { _rowIndex: rowIndex };
       (fieldMappings || []).forEach((mapping) => {
-        record[mapping.field.key] = mapping.headerIndex === null
-          ? null
+        const mappedValue = mapping.headerIndex === null
+          ? undefined
           : convertCell(row[mapping.headerIndex]);
+        record[mapping.field.key] = mappedValue === undefined
+          ? (mapping.field.defaultValue === undefined ? null : mapping.field.defaultValue)
+          : mappedValue;
       });
       return record;
     });
@@ -233,7 +241,7 @@
       row.partSpecs = normalizedText(row.partSpecs);
       row.partRemark = normalizedText(row.partRemark);
       row.partProcessReq = normalizedText(row.partProcessReq);
-      row.partNum = Number(row.partNum);
+      row.partNum = isBlank(row.partNum) ? 1 : Number(row.partNum);
 
       const rowErrors = [];
       if (!row.partNo) rowErrors.push("零件编号为空");

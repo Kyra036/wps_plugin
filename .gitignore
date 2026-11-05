@@ -9,3 +9,4 @@ Thumbs.db
 # 依赖与日志
 node_modules/
 *.log
+test-data/bom-import-test.xlsx
