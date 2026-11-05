@@ -250,15 +250,8 @@
         element.textContent = "当前工作表为空";
         return;
       }
-      const startColumn = Core.colLetter(info.startColumn - 1);
-      const endColumn = Core.colLetter(info.startColumn + info.columnCount - 2);
-      const startRow = info.startRow;
-      const endRow = info.startRow + info.rowCount - 1;
       element.innerHTML =
-        `<span class="label">Sheet</span><span class="value">${esc(info.name)}</span>` +
-        `<span class="label">使用范围</span><span class="value">${startColumn}${startRow}:${endColumn}${endRow}</span>` +
-        `<span class="label">区域大小</span><span class="value">${info.rowCount} 行 × ${info.columnCount} 列</span>` +
-        `<span class="label">有效数据</span><span class="value">${UI.totalDataRows} 行（末尾空白已忽略）</span>`;
+        `<span class="label">Sheet</span><span class="value">${esc(info.name)}</span>`;
     } catch (error) {
       element.textContent = `读取工作表信息失败：${error.message}`;
     }
