@@ -533,7 +533,7 @@
     if (UI.selectedMoldId) loadExistingParts(UI.selectedMoldId);
   }
 
-  // 只有临时文件、令牌和目标模具都准备好后才允许上传。
+  // 令牌和目标模具准备好后即可一键生成并上传临时文件。
   function renderImportState() {
     const button = $("btn-one-click");
     const hint = $("import-hint");
@@ -550,12 +550,14 @@
     else if (!UI.connection.token) message = "请先在开发登录中配置平台令牌";
     else if (!mold) message = "请先查询并选择目标模具";
     else if (UI.generateBusy) message = "正在生成新的临时 XLSX...";
-    else if (!UI.generatedFile) message = "请先生成临时 XLSX";
     else if (UI.uploadCompleted) message = "本次临时文件已上传，请重新生成后再上传";
-    else message = `准备上传到：${mold.moldNo || mold.moldName || "未命名模具"}（不判断重复零件）`;
+    else if (UI.generatedFile) {
+      message = `准备上传到：${mold.moldNo || mold.moldName || "未命名模具"}（不判断重复零件）`;
+    } else {
+      message = `点击后将生成临时 XLSX 并上传到：${mold.moldNo || mold.moldName || "未命名模具"}`;
+    }
 
     button.disabled =
-      !UI.generatedFile ||
       !UI.connection.token ||
       !mold ||
       UI.generateBusy ||
@@ -589,7 +591,7 @@
     const ready = !!template &&
       mapping.unmatchedTemplateFields.length === 0 &&
       UI.totalDataRows > 0;
-    button.disabled = !ready || UI.generateBusy;
+    button.disabled = !ready || UI.generateBusy || UI.importBusy;
     button.textContent = UI.generateBusy
       ? "正在生成..."
       : "生成临时 XLSX（暂不上传）";
@@ -719,9 +721,34 @@
     }
   }
 
-  // 生成内存中的平台标准 XLSX，本函数不会调用平台上传接口。
+  // 生成操作独立成函数，供“预览文件”和“一键导入”共同复用。
+  async function buildTemporaryFile() {
+    const result = await readAndValidateBom();
+    if (result.validation.errors.length > 0) {
+      const error = new Error("BOM 数据校验失败");
+      error.validationErrors = result.validation.errors;
+      throw error;
+    }
+
+    const template = currentTemplate();
+    const fileName = `BOM-${Date.now()}.xlsx`;
+    const file = XlsxBuilder.buildBomFile(
+      result.validation.rows,
+      fileName,
+      template.platform
+    );
+    return { file, rows: result.validation.rows.slice() };
+  }
+
+  function applyTemporaryFile(generated) {
+    UI.generatedFile = generated.file;
+    UI.generatedRows = generated.rows;
+    renderGeneratedPreview();
+  }
+
+  // 单独生成时展示文件大小，不上传。
   async function generateTemporaryFile() {
-    if (UI.generateBusy) return;
+    if (UI.generateBusy || UI.importBusy) return;
     clearErrors();
     setValidationStatus("");
     setImportStatus("");
@@ -731,37 +758,23 @@
     renderGenerateState();
     renderImportState();
     try {
-      const result = await readAndValidateBom();
-      if (result.validation.errors.length > 0) {
-        showError(result.validation.errors);
-        setGenerateStatus(
-          `无法生成：${result.validation.errors.length} 行 BOM 数据有错误`,
-          "error"
-        );
-        return;
-      }
-
-      const template = currentTemplate();
-      const fileName = `BOM-${Date.now()}.xlsx`;
-      const file = XlsxBuilder.buildBomFile(
-        result.validation.rows,
-        fileName,
-        template.platform
-      );
-      UI.generatedFile = file;
-      UI.generatedRows = result.validation.rows.slice();
-      const sizeKb = Math.max(1, Math.ceil(file.size / 1024));
+      const generated = await buildTemporaryFile();
+      applyTemporaryFile(generated);
+      const sizeKb = Math.max(1, Math.ceil(generated.file.size / 1024));
       setGenerateStatus(
-        `临时 XLSX 生成成功：${result.validation.rows.length} 行数据，约 ${sizeKb} KB，尚未上传`,
+        `临时 XLSX 生成成功：${generated.rows.length} 行数据，约 ${sizeKb} KB，尚未上传`,
         "ok"
       );
-      renderGeneratedPreview();
       renderImportState();
       toast("临时 XLSX 已生成");
     } catch (error) {
       UI.generatedFile = null;
       UI.generatedRows = [];
-      showError(`临时 XLSX 生成失败：${error.message}`);
+      if (error.validationErrors) {
+        showError(error.validationErrors);
+      } else {
+        showError(`临时 XLSX 生成失败：${error.message}`);
+      }
       setGenerateStatus("生成失败，请根据错误提示修改后重试", "error");
     } finally {
       UI.generateBusy = false;
@@ -775,10 +788,6 @@
     if (UI.importBusy) return;
     const template = currentTemplate();
     const mold = selectedMold();
-    if (!UI.generatedFile) {
-      showError("请先生成临时 XLSX");
-      return;
-    }
     if (!template || !mold || !UI.connection.token) {
       showError("请先选择目标模具并配置平台令牌");
       return;
@@ -789,6 +798,13 @@
     UI.importBusy = true;
     renderImportState();
     try {
+      // 未单独生成时，自动完成校验和临时文件生成。
+      if (!UI.generatedFile) {
+        setImportStatus("正在生成临时 XLSX...");
+        const generated = await buildTemporaryFile();
+        applyTemporaryFile(generated);
+      }
+      setImportStatus("正在上传临时 XLSX 到平台...");
       const result = await BomApi.uploadBom(
         UI.generatedFile,
         mold.moldId,
@@ -801,7 +817,11 @@
       await loadExistingParts(mold.moldId);
     } catch (error) {
       UI.uploadCompleted = false;
-      showError(`BOM 上传失败：${error.message}`);
+      if (error.validationErrors) {
+        showError(error.validationErrors);
+      } else {
+        showError(`BOM 上传失败：${error.message}`);
+      }
       setImportStatus("上传失败，请根据错误提示处理后重试", "error");
     } finally {
       UI.importBusy = false;
