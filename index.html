@@ -152,23 +152,6 @@
     .mapping-hint, .action-hint {
       margin-top: 5px; color: var(--text-2); font-size: 10px;
     }
-    .existing-parts {
-      max-height: 130px; margin-top: 5px; overflow: auto;
-      border-top: 1px dashed #e2e8f0;
-    }
-    .existing-part-item {
-      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 6px; padding: 4px 0;
-      border-bottom: 1px solid #f1f5f9; font-size: 11px;
-    }
-    .existing-part-item span {
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    }
-    .existing-part-item .part-no { font-weight: 600; }
-    .existing-part-more {
-      padding-top: 4px; color: var(--text-2); font-size: 10px;
-    }
-
     #preview-panel { overflow-x: auto; }
     .preview-summary { margin-bottom: 4px; color: var(--text-2); font-size: 11px; }
     table.preview { border-collapse: collapse; width: 100%; font-size: 12px; }
@@ -284,7 +267,6 @@
   <section class="section">
     <h2>BOM 模板 <span id="env-tag" class="dim"></span></h2>
     <select id="tpl-select" aria-label="选择 BOM 模板"></select>
-    <div id="tpl-hint" class="dim" style="margin-top:4px;font-size:11px"></div>
   </section>
 
   <!-- 目标模具：先按编号或名称查询，再选择这一批零件要导入的模具 -->
@@ -305,7 +287,6 @@
       <div class="mold-results hidden" id="mold-results" role="listbox"></div>
     </div>
     <div id="mold-part-status" class="action-hint">选择模具后读取已有零件数量</div>
-    <div id="existing-parts-preview" class="existing-parts hidden"></div>
   </section>
 
   <!-- 自动表头匹配结果 -->

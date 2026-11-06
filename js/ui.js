@@ -289,9 +289,6 @@
       .join("");
     select.value = UI.currentTemplateId;
     select.disabled = UI.busy;
-    $("tpl-hint").textContent = currentTemplate()
-      ? "自动匹配后，可在字段映射中手动选择 Excel 列"
-      : "选择模板后开始自动匹配";
   }
 
   // 左边固定平台字段，右边手动选择 Excel 列；自动匹配只是初始选择。
@@ -652,38 +649,6 @@
     element.textContent = "目标模具没有已有零件";
   }
 
-  // 只展示前 20 条已有零件，完整数组保留在内存中供后续功能使用。
-  function renderExistingPartsPreview() {
-    const element = $("existing-parts-preview");
-    element.innerHTML = "";
-    if (!selectedMold() || UI.existingPartsLoading || UI.existingParts.length === 0) {
-      element.classList.add("hidden");
-      return;
-    }
-
-    element.classList.remove("hidden");
-    UI.existingParts.slice(0, 20).forEach((part) => {
-      const row = document.createElement("div");
-      row.className = "existing-part-item";
-      const partNo = document.createElement("span");
-      partNo.className = "part-no";
-      partNo.textContent = part.partNo || "（无编号）";
-      partNo.title = part.partNo || "";
-      const partName = document.createElement("span");
-      partName.textContent = part.partName || "（无名称）";
-      partName.title = part.partName || "";
-      row.append(partNo, partName);
-      element.appendChild(row);
-    });
-
-    if (UI.existingParts.length > 20) {
-      const more = document.createElement("div");
-      more.className = "existing-part-more";
-      more.textContent = `还有 ${UI.existingParts.length - 20} 个零件未显示`;
-      element.appendChild(more);
-    }
-  }
-
   // 只调用查询接口读取零件，本函数不包含新增、更新或删除操作。
   async function loadExistingParts(moldId) {
     const requestId = ++UI.existingPartsRequestId;
@@ -691,7 +656,6 @@
     UI.existingParts = [];
     UI.existingPartsLoaded = false;
     renderMoldPartStatus();
-    renderExistingPartsPreview();
     try {
       const parts = await BomApi.listParts(moldId);
       if (requestId !== UI.existingPartsRequestId) return;
@@ -706,7 +670,6 @@
       if (requestId === UI.existingPartsRequestId) {
         UI.existingPartsLoading = false;
         renderMoldPartStatus();
-        renderExistingPartsPreview();
         renderImportState();
       }
     }
@@ -731,7 +694,6 @@
     setImportStatus("");
     renderMoldOptions();
     renderMoldPartStatus();
-    renderExistingPartsPreview();
     renderImportState();
     if (UI.selectedMoldId) loadExistingParts(UI.selectedMoldId);
   }
@@ -802,7 +764,6 @@
     renderTemplateBar();
     renderMoldOptions();
     renderMoldPartStatus();
-    renderExistingPartsPreview();
     renderMapping();
     renderPreview();
     renderValidationState();
@@ -1134,7 +1095,6 @@
     UI.uploadCompleted = false;
     setImportStatus("");
     renderMoldPartStatus();
-    renderExistingPartsPreview();
     renderImportState();
   }
 
