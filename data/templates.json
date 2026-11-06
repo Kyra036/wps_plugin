@@ -4,7 +4,7 @@
     {
       "id": "tpl_bom_import_v1",
       "name": "BOM 导入模板",
-      "description": "对应平台 BOM导入 解析模板。",
+      "description": "原有 7 字段 BOM 导入模板，保留作为回退。",
       "builtIn": true,
       "version": 1,
       "platform": {
@@ -17,58 +17,192 @@
         {
           "key": "partNo",
           "label": "零件编号",
+          "header": "序号",
+          "type": "cell",
           "required": true,
           "visible": true,
-          "builtIn": true,
           "aliases": ["序号", "料号", "零件号"]
         },
         {
           "key": "partName",
           "label": "零件名称",
+          "header": "名称",
+          "type": "cell",
           "required": true,
           "visible": true,
-          "builtIn": true,
           "aliases": ["名称", "品名", "物料名称"]
         },
         {
           "key": "partMaterial",
           "label": "材质",
+          "header": "材料",
+          "type": "cell",
           "required": false,
           "visible": true,
-          "builtIn": true,
-          "aliases": ["材料"]
+          "aliases": ["材料", "材质"]
         },
         {
           "key": "partSpecs",
           "label": "实际规格",
+          "header": "规格（宽*长*高）（MM）",
+          "type": "cell",
           "required": false,
           "visible": true,
-          "builtIn": true,
-          "aliases": ["规格", "规格（宽*长*高）（MM）"]
+          "aliases": ["规格", "实际规格"]
         },
         {
           "key": "partNum",
           "label": "数量",
+          "header": "数量",
+          "type": "number",
           "required": false,
           "visible": true,
-          "builtIn": true,
           "aliases": ["齐套数量"]
         },
         {
           "key": "partRemark",
           "label": "备注",
+          "header": "备注",
+          "type": "cell",
           "required": false,
           "visible": true,
-          "builtIn": true,
           "aliases": []
         },
         {
           "key": "partProcessReq",
           "label": "加工要求",
+          "header": "加工要求",
+          "type": "cell",
           "required": false,
           "visible": true,
-          "builtIn": true,
           "aliases": ["加工说明"]
+        }
+      ]
+    },
+    {
+      "id": "tpl_bom_full_v1",
+      "name": "WPS插件测试BOM模板",
+      "description": "平台新建的 12 字段 BOM 模板，表头第 1 行、数据第 2 行。",
+      "builtIn": true,
+      "version": 1,
+      "platform": {
+        "excelParseConfigId": "2118616788984389634",
+        "sheetName": "BOM",
+        "headerRow": 1,
+        "dataStartRow": 2
+      },
+      "fields": [
+        {
+          "key": "partNo",
+          "label": "零件编号",
+          "header": "零件编号",
+          "type": "cell",
+          "required": true,
+          "visible": true,
+          "aliases": ["序号", "料号", "零件号", "件号"]
+        },
+        {
+          "key": "partName",
+          "label": "零件名称",
+          "header": "零件名称",
+          "type": "cell",
+          "required": true,
+          "visible": true,
+          "aliases": ["名称", "品名", "物料名称"]
+        },
+        {
+          "key": "partMaterial",
+          "label": "材质",
+          "header": "材质",
+          "type": "cell",
+          "required": false,
+          "visible": true,
+          "aliases": ["材料"]
+        },
+        {
+          "key": "partSpecs",
+          "label": "规格",
+          "header": "规格",
+          "type": "cell",
+          "required": false,
+          "visible": true,
+          "aliases": ["实际规格", "采购规格", "规格/净尺寸"]
+        },
+        {
+          "key": "partWeight",
+          "label": "重量",
+          "header": "重量",
+          "type": "number",
+          "required": false,
+          "visible": true,
+          "aliases": ["零件重量", "单重"]
+        },
+        {
+          "key": "partClassify",
+          "label": "零件分类",
+          "header": "零件分类",
+          "type": "cell",
+          "required": false,
+          "visible": true,
+          "aliases": ["类型", "分类", "零件类型"]
+        },
+        {
+          "key": "materialAttribute",
+          "label": "物料属性",
+          "header": "物料属性",
+          "type": "fixed",
+          "required": false,
+          "visible": true,
+          "mappable": false,
+          "defaultValue": null,
+          "aliases": []
+        },
+        {
+          "key": "partNum",
+          "label": "数量",
+          "header": "数量",
+          "type": "number",
+          "required": false,
+          "visible": true,
+          "aliases": ["齐套数量"]
+        },
+        {
+          "key": "partRemark",
+          "label": "备注",
+          "header": "备注",
+          "type": "cell",
+          "required": false,
+          "visible": true,
+          "aliases": []
+        },
+        {
+          "key": "partProcessReq",
+          "label": "加工要求",
+          "header": "加工要求",
+          "type": "cell",
+          "required": false,
+          "visible": true,
+          "aliases": ["加工说明"]
+        },
+        {
+          "key": "partHotDispose",
+          "label": "热处理",
+          "header": "热处理",
+          "type": "cell",
+          "required": false,
+          "visible": true,
+          "aliases": ["热处理/硬度", "硬度"]
+        },
+        {
+          "key": "partImage",
+          "label": "零件图",
+          "header": "零件图",
+          "type": "image",
+          "required": false,
+          "visible": true,
+          "mappable": false,
+          "defaultValue": null,
+          "aliases": []
         }
       ]
     }

@@ -35,6 +35,8 @@
     generateBusy: false,
     generatedFile: null,
     generatedRows: [],
+    generatedFields: [],
+    generatedWarnings: [],
     importBusy: false,
     uploadCompleted: false,
   };
@@ -105,32 +107,29 @@
   function resetGeneratedFile() {
     UI.generatedFile = null;
     UI.generatedRows = [];
+    UI.generatedFields = [];
+    UI.generatedWarnings = [];
     UI.uploadCompleted = false;
     setGenerateStatus("");
     setImportStatus("");
     renderGeneratedPreview();
   }
 
-  // 页面预览严格模拟临时 XLSX：第 5 行表头，之后逐行展示 BOM 数据。
+  // 页面预览严格模拟临时 XLSX：按生成时的字段顺序展示表头和数据。
   function renderGeneratedPreview() {
     const panel = $("generated-preview");
     const table = $("generated-preview-table");
+    const title = $("generated-preview-title");
     table.innerHTML = "";
     if (!UI.generatedFile) {
       panel.classList.add("hidden");
       return;
     }
 
-    const headers = ["Excel 行", "序号", "名称", "材料", "规格", "数量", "备注", "加工要求"];
-    const keys = [
-      "partNo",
-      "partName",
-      "partMaterial",
-      "partSpecs",
-      "partNum",
-      "partRemark",
-      "partProcessReq",
-    ];
+    const fields = UI.generatedFields.length ? UI.generatedFields : UI.fields;
+    const headers = ["Excel 行"].concat(
+      fields.map((field) => field.header || field.label || field.key)
+    );
     const headerRow = document.createElement("tr");
     headers.forEach((label) => {
       const cell = document.createElement("th");
@@ -140,18 +139,18 @@
     table.appendChild(headerRow);
 
     const platform = currentTemplate() && currentTemplate().platform;
-    const excelHeaderRow = Number(platform && platform.headerRow) || 5;
+    const excelHeaderRow = Number(platform && platform.headerRow) || 1;
+    title.textContent = `临时文件内容预览（表头位于 Excel 第 ${excelHeaderRow} 行）`;
     const headerContent = document.createElement("tr");
     const headerNumber = document.createElement("td");
     headerNumber.className = "row-no";
     headerNumber.textContent = excelHeaderRow;
     headerContent.appendChild(headerNumber);
-    ["序号", "名称", "材料", "规格（宽*长*高）（MM）", "数量", "备注", "加工要求"]
-      .forEach((value) => {
-        const cell = document.createElement("td");
-        cell.textContent = value;
-        headerContent.appendChild(cell);
-      });
+    fields.forEach((field) => {
+      const cell = document.createElement("td");
+      cell.textContent = field.header || field.label || field.key;
+      headerContent.appendChild(cell);
+    });
     table.appendChild(headerContent);
 
     UI.generatedRows.forEach((row, index) => {
@@ -160,9 +159,10 @@
       rowNumber.className = "row-no";
       rowNumber.textContent = excelHeaderRow + index + 1;
       tr.appendChild(rowNumber);
-      keys.forEach((key) => {
+      fields.forEach((field) => {
         const cell = document.createElement("td");
-        cell.textContent = row[key] === undefined || row[key] === null ? "" : String(row[key]);
+        const value = row[field.key];
+        cell.textContent = value === undefined || value === null ? "" : String(value);
         tr.appendChild(cell);
       });
       table.appendChild(tr);
@@ -313,7 +313,9 @@
     section.classList.remove("hidden");
     $("btn-auto-map").disabled =
       UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy;
-    stats.textContent = `${result.assignedCount}/${UI.fields.length} 个字段已指定`;
+    const fixedCount = UI.fields.length - result.mappableCount;
+    stats.textContent = `${result.assignedCount}/${result.mappableCount} 个可映射字段已指定` +
+      (fixedCount > 0 ? `，另有 ${fixedCount} 个固定字段` : "");
 
     result.fieldMappings.forEach((mapping) => {
       const row = document.createElement("div");
@@ -331,38 +333,47 @@
         target.textContent = "未命名字段";
       }
 
-      const select = document.createElement("select");
-      select.className = "mapping-select";
-      select.dataset.fieldId = mapping.fieldId;
-      select.disabled =
-        UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy;
-      const emptyOption = document.createElement("option");
-      emptyOption.value = "";
-      emptyOption.textContent = mapping.field.required
-        ? "请选择 Excel 列"
-        : "不选择，字段留空";
-      select.appendChild(emptyOption);
+      if (mapping.field.mappable === false) {
+        const staticValue = document.createElement("span");
+        staticValue.className = "mapping-static";
+        staticValue.textContent = mapping.field.type === "image"
+          ? "图片列，后续支持"
+          : "固定为空";
+        row.className = "mapping-row";
+        row.append(target, staticValue);
+      } else {
+        const select = document.createElement("select");
+        select.className = "mapping-select";
+        select.dataset.fieldId = mapping.fieldId;
+        select.disabled =
+          UI.busy || UI.validationBusy || UI.generateBusy || UI.importBusy;
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = mapping.field.required
+          ? "请选择 Excel 列"
+          : "不选择，字段留空";
+        select.appendChild(emptyOption);
 
-      headers.forEach((header, headerIndex) => {
-        const option = document.createElement("option");
-        const column = header.column || Core.colLetter(headerIndex);
-        const label = header.fullLabel || header.label || "（空表头）";
-        option.value = String(headerIndex);
-        option.textContent = `${column}  ${label}`;
-        select.appendChild(option);
-      });
+        headers.forEach((header, headerIndex) => {
+          const option = document.createElement("option");
+          const column = header.column || Core.colLetter(headerIndex);
+          const label = header.fullLabel || header.label || "（空表头）";
+          option.value = String(headerIndex);
+          option.textContent = `${column}  ${label}`;
+          select.appendChild(option);
+        });
 
-      select.value = mapping.headerIndex === null ? "" : String(mapping.headerIndex);
-      select.addEventListener("change", (event) => {
-        updateManualMapping(mapping.fieldId, event.target.value);
-      });
+        select.value = mapping.headerIndex === null ? "" : String(mapping.headerIndex);
+        select.addEventListener("change", (event) => {
+          updateManualMapping(mapping.fieldId, event.target.value);
+        });
 
-      const duplicate = mapping.headerIndex !== null &&
-        result.duplicateColumns.includes(mapping.headerIndex);
-      if (mapping.headerIndex === null || duplicate) row.className = "mapping-row unmatched";
-      else row.className = "mapping-row";
-
-      row.append(target, select);
+        const duplicate = mapping.headerIndex !== null &&
+          result.duplicateColumns.includes(mapping.headerIndex);
+        if (mapping.headerIndex === null || duplicate) row.className = "mapping-row unmatched";
+        else row.className = "mapping-row";
+        row.append(target, select);
+      }
       list.appendChild(row);
     });
 
@@ -898,12 +909,21 @@
       if (result.validation.errors.length > 0) {
         showError(result.validation.errors);
         setValidationStatus(
-          `检查完成：${result.validation.rows.length} 行有效，${result.validation.errors.length} 行有错误`,
+          `检查完成：${result.validation.rows.length} 行有效，${result.validation.errors.length} 行有错误` +
+            (result.validation.warnings.length
+              ? `，${result.validation.warnings.length} 行零件编号为空`
+              : ""),
           "error"
         );
       } else {
-        setValidationStatus(`检查通过：${result.validation.rows.length} 行通过前端校验`, "ok");
-        toast("BOM 检查通过");
+        const warningText = result.validation.warnings.length
+          ? `；${result.validation.warnings.length} 行零件编号为空，将保留`
+          : "";
+        setValidationStatus(
+          `检查通过：${result.validation.rows.length} 行通过前端校验${warningText}`,
+          result.validation.warnings.length ? "warn" : "ok"
+        );
+        toast(result.validation.warnings.length ? "BOM 检查通过，存在空零件编号" : "BOM 检查通过");
       }
     } catch (error) {
       showError(`BOM 检查失败：${error.message}`);
@@ -928,15 +948,23 @@
     const file = XlsxBuilder.buildBomFile(
       result.validation.rows,
       fileName,
-      template.platform
+      template.platform,
+      UI.fields
     );
-    return { file, rows: result.validation.rows.slice() };
+    return {
+      file,
+      rows: result.validation.rows.slice(),
+      fields: UI.fields.slice(),
+      warnings: result.validation.warnings.slice(),
+    };
   }
 
   // 保存生成结果到内存，并刷新临时 XLSX 预览。
   function applyTemporaryFile(generated) {
     UI.generatedFile = generated.file;
     UI.generatedRows = generated.rows;
+    UI.generatedFields = generated.fields || UI.fields.slice();
+    UI.generatedWarnings = generated.warnings || [];
     renderGeneratedPreview();
   }
 
@@ -955,15 +983,20 @@
       const generated = await buildTemporaryFile();
       applyTemporaryFile(generated);
       const sizeKb = Math.max(1, Math.ceil(generated.file.size / 1024));
+      const warningText = generated.warnings.length
+        ? `；${generated.warnings.length} 行零件编号为空`
+        : "";
       setGenerateStatus(
-        `临时 XLSX 生成成功：${generated.rows.length} 行数据，约 ${sizeKb} KB，尚未上传`,
-        "ok"
+        `临时 XLSX 生成成功：${generated.rows.length} 行数据，约 ${sizeKb} KB${warningText}，尚未上传`,
+        generated.warnings.length ? "warn" : "ok"
       );
       renderImportState();
       toast("临时 XLSX 已生成");
     } catch (error) {
       UI.generatedFile = null;
       UI.generatedRows = [];
+      UI.generatedFields = [];
+      UI.generatedWarnings = [];
       if (error.validationErrors) {
         showError(error.validationErrors);
       } else {
@@ -1008,12 +1041,15 @@
         applyTemporaryFile(generated);
       }
       setImportStatus("正在检查平台导入模板的数据范围...");
-      const lastDataRow = Number(template.platform.headerRow || 5) + UI.generatedRows.length;
+      const lastDataRow = Number(template.platform.headerRow || 1) + UI.generatedRows.length;
       const rangeCheck = await validateTemplateDataRange(template, lastDataRow);
       if (!rangeCheck.checked) {
         setImportStatus(`模板范围检查跳过：${rangeCheck.message}；继续上传...`);
       }
-      setImportStatus("正在上传临时 XLSX 到平台...");
+      const warningText = UI.generatedWarnings.length
+        ? `；其中 ${UI.generatedWarnings.length} 行零件编号为空`
+        : "";
+      setImportStatus(`正在上传临时 XLSX 到平台${warningText}...`);
       const result = await BomApi.uploadBom(
         UI.generatedFile,
         mold.moldId,

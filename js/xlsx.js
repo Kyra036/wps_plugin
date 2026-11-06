@@ -1,17 +1,30 @@
-// 临时 XLSX 生成器：按平台固定模板输出 BOM 文件，不依赖网络或第三方库。
+// 临时 XLSX 生成器：按当前平台模板字段输出 BOM 文件，不依赖网络或第三方库。
 (function (root) {
   "use strict";
 
   const MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-  const HEADERS = [
-    ["序号", "partNo"],
-    ["名称", "partName"],
-    ["材料", "partMaterial"],
-    ["规格（宽*长*高）（MM）", "partSpecs"],
-    ["数量", "partNum"],
-    ["备注", "partRemark"],
-    ["加工要求", "partProcessReq"],
+  // 旧版 7 字段模板作为兜底，正常生成时会使用当前模板传入的动态字段。
+  const DEFAULT_FIELDS = [
+    { key: "partNo", header: "序号", type: "cell" },
+    { key: "partName", header: "名称", type: "cell" },
+    { key: "partMaterial", header: "材料", type: "cell" },
+    { key: "partSpecs", header: "规格（宽*长*高）（MM）", type: "cell" },
+    { key: "partNum", header: "数量", type: "number" },
+    { key: "partRemark", header: "备注", type: "cell" },
+    { key: "partProcessReq", header: "加工要求", type: "cell" },
   ];
+
+  // 只保留能写入 XLSX 的字段，并统一表头、字段键和单元格类型。
+  function normalizeOutputFields(fields) {
+    const normalized = (fields || [])
+      .filter((field) => field && field.key)
+      .map((field) => ({
+        key: field.key,
+        header: field.header || field.label || field.key,
+        type: field.type || "cell",
+      }));
+    return normalized.length > 0 ? normalized : DEFAULT_FIELDS.map((field) => ({ ...field }));
+  }
 
   // 转义 XML 特殊字符，防止单元格内容破坏 XLSX 的 XML 结构。
   function xmlEscape(value) {
@@ -35,30 +48,35 @@
     return value;
   }
 
-  // 文本统一使用 inlineStr，数量和数字保持数值单元格。
+  // 文本统一使用 inlineStr；空值输出空单元格，数字列保持数值单元格。
   function cellXml(reference, value, forceText) {
+    if (value === undefined || value === null || value === "") {
+      return `<c r="${reference}"/>`;
+    }
     if (!forceText && typeof value === "number" && Number.isFinite(value)) {
       return `<c r="${reference}"><v>${value}</v></c>`;
     }
     return `<c r="${reference}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
   }
 
-  // 生成工作表 XML：表头固定写入指定行，数据从下一行开始。
-  function buildSheetXml(rows, headerRow) {
+  // 生成工作表 XML：字段决定列数和表头，数据从表头下一行开始。
+  function buildSheetXml(rows, headerRow, fields) {
+    const outputFields = normalizeOutputFields(fields);
     const lastRow = Math.max(headerRow, headerRow + rows.length);
+    const lastColumn = columnName(outputFields.length - 1);
     const rowXml = [];
-    const headerCells = HEADERS.map(([label], index) =>
-      cellXml(`${columnName(index)}${headerRow}`, label, true)
+    const headerCells = outputFields.map((field, index) =>
+      cellXml(`${columnName(index)}${headerRow}`, field.header, true)
     ).join("");
     rowXml.push(`<row r="${headerRow}" s="1">${headerCells}</row>`);
 
     rows.forEach((row, rowIndex) => {
       const excelRow = headerRow + rowIndex + 1;
-      const cells = HEADERS.map(([, key], columnIndex) =>
+      const cells = outputFields.map((field, columnIndex) =>
         cellXml(
           `${columnName(columnIndex)}${excelRow}`,
-          row[key],
-          key !== "partNum"
+          row[field.key],
+          field.type !== "number" && field.key !== "partNum" && field.key !== "partWeight"
         )
       ).join("");
       rowXml.push(`<row r="${excelRow}">${cells}</row>`);
@@ -67,7 +85,7 @@
     return (
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
       `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-      `<dimension ref="A${headerRow}:G${lastRow}"/>` +
+      `<dimension ref="A${headerRow}:${lastColumn}${lastRow}"/>` +
       `<sheetData>${rowXml.join("")}</sheetData>` +
       `</worksheet>`
     );
@@ -201,7 +219,7 @@
   }
 
   // 组装一个最小但完整的 XLSX 包所需的全部 XML 文件和关系文件。
-  function packageEntries(sheetName, rows, headerRow) {
+  function packageEntries(sheetName, rows, headerRow, fields) {
     const safeSheetName = xmlEscape(sheetName || "BOM");
     return [
       {
@@ -226,17 +244,19 @@
       },
       {
         name: "xl/worksheets/sheet1.xml",
-        content: buildSheetXml(rows, headerRow),
+        content: buildSheetXml(rows, headerRow, fields),
       },
     ];
   }
 
   // 对外入口：生成 BOM XLSX，优先返回 File，旧环境降级返回 Blob。
-  function buildBomFile(rows, fileName, platform) {
+  function buildBomFile(rows, fileName, platform, fields) {
     const options = platform || {};
-    const headerRow = Number(options.headerRow) || 5;
+    const hasCustomFields = Array.isArray(fields) &&
+      fields.some((field) => field && field.key);
+    const headerRow = Number(options.headerRow) || (hasCustomFields ? 1 : 5);
     const sheetName = options.sheetName || "BOM";
-    const fileBytes = buildZip(packageEntries(sheetName, rows || [], headerRow));
+    const fileBytes = buildZip(packageEntries(sheetName, rows || [], headerRow, fields));
     const blob = new Blob([fileBytes], { type: MIME_TYPE });
     const name = fileName || "wps-bom-import.xlsx";
 

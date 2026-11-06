@@ -144,6 +144,11 @@
     .mapping-target .group { color: var(--text-2); }
     .mapping-row.unmatched .mapping-target { color: var(--error); }
     .mapping-select { min-width: 0; padding: 4px 5px; font-size: 11px; }
+    .mapping-static {
+      min-width: 0; padding: 4px 5px; color: var(--text-2);
+      background: #f8fafc; border: 1px solid var(--border); border-radius: 3px;
+      font-size: 11px;
+    }
     .mapping-hint, .action-hint {
       margin-top: 5px; color: var(--text-2); font-size: 10px;
     }
@@ -196,6 +201,7 @@
       color: var(--text-2); font-size: 11px; white-space: pre-wrap;
     }
     #validation-status.ok { background: #f0fdf4; color: var(--ok); }
+    #validation-status.warn { background: #fffbeb; color: #b45309; }
     #validation-status.error { background: #fef2f2; color: var(--error); }
     #generate-status {
       margin: 6px 0; padding: 6px;
@@ -203,6 +209,7 @@
       color: var(--text-2); font-size: 11px; white-space: pre-wrap;
     }
     #generate-status.ok { background: #f0fdf4; color: var(--ok); }
+    #generate-status.warn { background: #fffbeb; color: #b45309; }
     #generate-status.error { background: #fef2f2; color: var(--error); }
     .generated-preview {
       margin: 6px 0; border-top: 1px dashed #e2e8f0;
@@ -232,6 +239,7 @@
       color: var(--text-2); font-size: 11px; white-space: pre-wrap;
     }
     #import-status.ok { background: #f0fdf4; color: var(--ok); }
+    #import-status.warn { background: #fffbeb; color: #b45309; }
     #import-status.error { background: #fef2f2; color: var(--error); }
 
     @media (prefers-reduced-motion: reduce) {
@@ -321,7 +329,7 @@
     <button class="secondary" id="btn-generate-xlsx" type="button" disabled style="width:100%;margin-top:6px">生成临时 XLSX（暂不上传）</button>
     <div id="generate-status" class="hidden" role="status"></div>
     <div id="generated-preview" class="generated-preview hidden">
-      <div class="generated-preview-title">临时文件内容预览（表头位于 Excel 第 5 行）</div>
+      <div class="generated-preview-title" id="generated-preview-title">临时文件内容预览</div>
       <div class="generated-preview-scroll">
         <table class="generated-table" id="generated-preview-table"></table>
       </div>

@@ -38,7 +38,10 @@
           labelPath,
           groupLabels: labelPath.slice(0, -1),
           aliases: Array.isArray(field.aliases) ? field.aliases.slice() : [],
+          header: field.header || field.label || field.key,
+          type: field.type || "cell",
           required: field.required !== false,
+          mappable: field.mappable !== false && field.type !== "fixed" && field.type !== "image",
           defaultValue: field.defaultValue,
         });
       }
@@ -74,14 +77,17 @@
   // 自动匹配只建立一对一关系，作为手动列选择的初始值。
   function autoMatchHeaders(sourceHeaders, fields) {
     const candidates = [];
+    const mappableFields = (fields || []).filter((field) => field.mappable !== false);
     (sourceHeaders || []).forEach((header, headerIndex) => {
       const sourceField = normalizeHeader(header.label || header.fullLabel);
-      (fields || []).forEach((field, fieldIndex) => {
-        const targetField = normalizeHeader(field.label);
+      mappableFields.forEach((field, fieldIndex) => {
+        const targetNames = [field.label, field.header]
+          .map(normalizeHeader)
+          .filter(Boolean);
         let score = 0;
         let reason = "";
 
-        if (sourceField && sourceField === targetField) {
+        if (sourceField && targetNames.includes(sourceField)) {
           score = 100;
           reason = "字段名称完全匹配";
         } else {
@@ -109,7 +115,7 @@
 
     const matches = (sourceHeaders || []).map((header, headerIndex) => {
       const candidate = headerMatches.get(headerIndex);
-      const field = candidate ? fields[candidate.fieldIndex] : null;
+      const field = candidate ? mappableFields[candidate.fieldIndex] : null;
       return {
         headerIndex,
         header,
@@ -121,7 +127,7 @@
     return {
       matches,
       matchedCount: matches.filter((match) => match.field).length,
-      unmatchedTemplateFields: (fields || []).filter(
+      unmatchedTemplateFields: mappableFields.filter(
         (field) => !matches.some((match) => match.fieldId === field.id)
       ),
     };
@@ -155,7 +161,7 @@
     const duplicateColumns = new Set();
 
     const fieldMappings = (fields || []).map((field) => {
-      const rawIndex = mapping[field.id];
+      const rawIndex = field.mappable === false ? undefined : mapping[field.id];
       const numericIndex = rawIndex === "" || rawIndex === undefined || rawIndex === null
         ? NaN
         : Number(rawIndex);
@@ -178,12 +184,14 @@
       };
     });
 
-    const unmappedFields = fieldMappings.filter((item) => item.headerIndex === null);
+    const mappableFields = fieldMappings.filter((item) => item.field.mappable !== false);
+    const unmappedFields = mappableFields.filter((item) => item.headerIndex === null);
     const missingFields = unmappedFields.filter((item) => item.field.required);
     return {
       fieldMappings,
-      matchedCount: fieldMappings.length - unmappedFields.length,
-      assignedCount: fieldMappings.length - unmappedFields.length,
+      mappableCount: mappableFields.length,
+      matchedCount: mappableFields.length - unmappedFields.length,
+      assignedCount: mappableFields.length - unmappedFields.length,
       unmappedFields,
       missingFields,
       duplicateColumns: Array.from(duplicateColumns),
@@ -221,7 +229,7 @@
   function validateImportRows(rows, dataStartRow) {
     const validRows = [];
     const errors = [];
-    const seenPartNos = new Map();
+    const warnings = [];
     const firstDataRow = Number(dataStartRow) || 2;
     const lengthRules = [
       ["partNo", "零件编号", 200],
@@ -230,6 +238,7 @@
       ["partSpecs", "实际规格", 300],
       ["partRemark", "备注", 200],
       ["partProcessReq", "加工要求", 200],
+      ["partHotDispose", "热处理", 20],
     ];
 
     (rows || []).forEach((sourceRow) => {
@@ -242,15 +251,23 @@
       row.partName = normalizedText(row.partName);
       row.partMaterial = normalizedText(row.partMaterial);
       row.partSpecs = normalizedText(row.partSpecs);
+      row.partWeight = isBlank(row.partWeight) ? null : Number(row.partWeight);
+      row.partClassify = normalizedText(row.partClassify);
       row.partRemark = normalizedText(row.partRemark);
       row.partProcessReq = normalizedText(row.partProcessReq);
+      row.partHotDispose = normalizedText(row.partHotDispose);
+      row.materialAttribute = normalizedText(row.materialAttribute);
       row.partNum = isBlank(row.partNum) ? 1 : Number(row.partNum);
 
       const rowErrors = [];
-      if (!row.partNo) rowErrors.push("零件编号为空");
+      // 零件编号允许为空；该行仍可生成并上传，但需要向用户显示明确提示。
+      if (!row.partNo) warnings.push(`第 ${excelRow} 行零件编号为空，将保留该行`);
       if (!row.partName) rowErrors.push("零件名称为空");
       if (!Number.isInteger(row.partNum) || row.partNum < 1) {
         rowErrors.push("数量必须是大于 0 的整数");
+      }
+      if (row.partWeight !== null && (!Number.isFinite(row.partWeight) || row.partWeight < 0)) {
+        rowErrors.push("重量必须是非负数字");
       }
 
       lengthRules.forEach(([key, label, maxLength]) => {
@@ -259,21 +276,14 @@
         }
       });
 
-      if (row.partNo && seenPartNos.has(row.partNo)) {
-        rowErrors.push(
-          `零件编号 ${row.partNo} 与第 ${seenPartNos.get(row.partNo)} 行重复`
-        );
-      }
-
       if (rowErrors.length > 0) {
         errors.push(`第 ${excelRow} 行：${rowErrors.join("；")}`);
         return;
       }
-      seenPartNos.set(row.partNo, excelRow);
       validRows.push(row);
     });
 
-    return { rows: validRows, errors };
+    return { rows: validRows, errors, warnings };
   }
 
   return {
